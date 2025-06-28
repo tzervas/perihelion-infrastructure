@@ -1,0 +1,108 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: gitlab-runner-controller
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+# Common labels applied to all resources
+commonLabels:
+  app.kubernetes.io/part-of: perihelion-auth-manager
+  app.kubernetes.io/managed-by: kustomize
+
+# Common annotations applied to all resources
+commonAnnotations:
+  security.perihelion.io/deployed-by: kustomize
+  deployment.perihelion.io/timestamp: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+# Namespace where resources will be deployed
+namespace: gitlab-runner-system
+
+# Resource files to include
+resources:
+  # Namespaces
+  - namespaces/gitlab-runner-system.yaml
+  
+  # Security
+  - security/rbac.yaml
+  - security/network-policies.yaml
+  - security/pod-security-standards.yaml
+  
+  # Core manifests
+  - manifests/configmap.yaml
+  - manifests/deployment.yaml
+  - manifests/service.yaml
+  - manifests/servicemonitor.yaml
+
+# Images to update (for CI/CD)
+images:
+  - name: gitlab-runner-controller
+    newTag: latest
+
+# ConfigMap generator for environment-specific configuration
+configMapGenerator:
+  - name: gitlab-runner-controller-env-config
+    literals:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=info
+      - METRICS_ENABLED=true
+
+# Secret generator (placeholder - secrets should be managed externally)
+secretGenerator:
+  - name: gitlab-runner-controller-secrets
+    literals:
+      - gitlab-token=PLACEHOLDER_GITLAB_TOKEN
+      - vault-token=PLACEHOLDER_VAULT_TOKEN
+    type: Opaque
+
+# Patches for environment-specific modifications
+patches:
+  # Increase replicas for production
+  - target:
+      kind: Deployment
+      name: gitlab-runner-controller
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+
+# Replacements for dynamic values
+replacements:
+  - source:
+      kind: ConfigMap
+      name: gitlab-runner-controller-env-config
+      fieldPath: data.LOG_LEVEL
+    targets:
+      - select:
+          kind: Deployment
+          name: gitlab-runner-controller
+        fieldPaths:
+          - spec.template.spec.containers.[name=controller].args.[=--log-level=info]
+
+# Transformers
+transformers:
+  # Add security annotations
+  - |-
+    apiVersion: builtin
+    kind: AnnotationsTransformer
+    metadata:
+      name: security-annotations
+    annotations:
+      security.perihelion.io/scanned: "true"
+      security.perihelion.io/policy-compliant: "true"
+    fieldSpecs:
+      - path: metadata/annotations
+        create: true
+
+# Generators
+generators:
+  # Generate network policies dynamically
+  - |-
+    apiVersion: builtin
+    kind: ConfigMapGenerator
+    metadata:
+      name: network-policy-config
+    literals:
+      - allowed_namespaces=monitoring,kube-system
+      - denied_protocols=telnet,ftp,ssh

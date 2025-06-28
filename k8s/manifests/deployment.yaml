@@ -1,0 +1,224 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitlab-runner-controller
+  namespace: gitlab-runner-system
+  labels:
+    app.kubernetes.io/name: gitlab-runner-controller
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+    app.kubernetes.io/version: "1.0.0"
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+    security.perihelion.io/security-profile: "strict"
+    monitoring.perihelion.io/scrape: "true"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gitlab-runner-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gitlab-runner-controller
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/part-of: perihelion-auth-manager
+        app.kubernetes.io/version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+        security.perihelion.io/pod-security-profile: "restricted"
+        security.perihelion.io/network-policy: "strict"
+    spec:
+      serviceAccountName: gitlab-runner-controller
+      automountServiceAccountToken: true
+      
+      # Security Context - Pod Level
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534  # nobody user
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+        supplementalGroups: []
+      
+      # Node Selection and Scheduling
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: gitlab-runner-controller
+              topologyKey: kubernetes.io/hostname
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: DoesNotExist
+      
+      tolerations:
+      - key: node.kubernetes.io/not-ready
+        operator: Exists
+        effect: NoExecute
+        tolerationSeconds: 300
+      - key: node.kubernetes.io/unreachable
+        operator: Exists
+        effect: NoExecute
+        tolerationSeconds: 300
+      
+      # DNS Configuration
+      dnsPolicy: ClusterFirst
+      dnsConfig:
+        options:
+        - name: ndots
+          value: "2"
+        - name: edns0
+      
+      # Termination Settings
+      terminationGracePeriodSeconds: 30
+      restartPolicy: Always
+      
+      containers:
+      - name: controller
+        image: gitlab-runner-controller:latest
+        imagePullPolicy: IfNotPresent
+        
+        # Security Context - Container Level
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65534
+          runAsGroup: 65534
+          capabilities:
+            drop:
+            - ALL
+          seccompProfile:
+            type: RuntimeDefault
+        
+        # Resource Management
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+            ephemeral-storage: 100Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+            ephemeral-storage: 1Gi
+        
+        # Ports
+        ports:
+        - name: metrics
+          containerPort: 8080
+          protocol: TCP
+        - name: health
+          containerPort: 8081
+          protocol: TCP
+        
+        # Environment Variables
+        env:
+        - name: CONTROLLER_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: CONTROLLER_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: CONTROLLER_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: GITLAB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: gitlab-runner-controller-secrets
+              key: gitlab-token
+        - name: VAULT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: gitlab-runner-controller-secrets
+              key: vault-token
+              optional: true
+        
+        # Volume Mounts
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /app/cache
+        
+        # Configuration
+        args:
+        - "--config=/app/config/config.yaml"
+        - "--log-level=info"
+        - "--log-format=json"
+        - "--metrics-addr=:8080"
+        - "--health-addr=:8081"
+        
+        # Health Checks
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: health
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: health
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        
+        startupProbe:
+          httpGet:
+            path: /health
+            port: health
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 10
+      
+      # Volumes
+      volumes:
+      - name: config
+        configMap:
+          name: gitlab-runner-controller-config
+          defaultMode: 0444
+      - name: tmp
+        emptyDir:
+          sizeLimit: 100Mi
+      - name: cache
+        emptyDir:
+          sizeLimit: 500Mi

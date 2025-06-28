@@ -1,0 +1,164 @@
+---
+# Default deny-all network policy for gitlab-runner-system namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: gitlab-runner-system
+  labels:
+    app.kubernetes.io/name: gitlab-runner-controller
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+---
+# Allow controller to communicate with Kubernetes API
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-controller-api-access
+  namespace: gitlab-runner-system
+  labels:
+    app.kubernetes.io/name: gitlab-runner-controller
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: gitlab-runner-controller
+  policyTypes:
+  - Egress
+  egress:
+  # Allow access to Kubernetes API server
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 6443
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+---
+# Allow controller to communicate with GitLab
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-controller-gitlab-access
+  namespace: gitlab-runner-system
+  labels:
+    app.kubernetes.io/name: gitlab-runner-controller
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: gitlab-runner-controller
+  policyTypes:
+  - Egress
+  egress:
+  # Allow HTTPS to GitLab (port 443)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+---
+# Allow monitoring access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-access
+  namespace: gitlab-runner-system
+  labels:
+    app.kubernetes.io/name: gitlab-runner-controller
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: gitlab-runner-controller
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow monitoring namespace to scrape metrics
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 8080
+---
+# Default deny-all network policy for gitlab-runners namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all-runners
+  namespace: gitlab-runners
+  labels:
+    app.kubernetes.io/name: gitlab-runners
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+---
+# Allow runner pods to communicate with GitLab
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-runners-gitlab-access
+  namespace: gitlab-runners
+  labels:
+    app.kubernetes.io/name: gitlab-runners
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  podSelector:
+    matchLabels:
+      app: gitlab-runner
+  policyTypes:
+  - Egress
+  egress:
+  # Allow HTTPS to GitLab
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # Allow access to container registries (standard ports)
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 5000
