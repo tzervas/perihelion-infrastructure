@@ -1,0 +1,194 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: configuration
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+data:
+  grafana.ini: |
+    [analytics]
+    check_for_updates = false
+    reporting_enabled = false
+    
+    [auth]
+    disable_login_form = false
+    disable_signout_menu = false
+    
+    [auth.anonymous]
+    enabled = false
+    
+    [auth.basic]
+    enabled = true
+    
+    [database]
+    type = sqlite3
+    path = /var/lib/grafana/grafana.db
+    
+    [dataproxy]
+    timeout = 30
+    
+    [explore]
+    enabled = true
+    
+    [log]
+    mode = console
+    level = info
+    format = json
+    
+    [metrics]
+    enabled = true
+    interval_seconds = 10
+    
+    [paths]
+    data = /var/lib/grafana
+    logs = /var/log/grafana
+    plugins = /var/lib/grafana/plugins
+    provisioning = /etc/grafana/provisioning
+    
+    [security]
+    admin_user = admin
+    admin_password = $__file{/etc/grafana/secrets/admin_password}
+    secret_key = $__file{/etc/grafana/secrets/secret_key}
+    disable_gravatar = true
+    cookie_secure = true
+    cookie_samesite = strict
+    strict_transport_security = true
+    strict_transport_security_max_age_seconds = 86400
+    content_type_protection = true
+    x_content_type_options = nosniff
+    x_xss_protection = true
+    
+    [server]
+    domain = grafana.monitoring.svc.cluster.local
+    http_addr = 0.0.0.0
+    http_port = 3000
+    protocol = http
+    root_url = http://grafana.monitoring.svc.cluster.local:3000/
+    enable_gzip = true
+    
+    [unified_alerting]
+    enabled = true
+    
+    [users]
+    allow_sign_up = false
+    auto_assign_org = true
+    auto_assign_org_role = Viewer
+    default_theme = dark
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: configuration
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: Prometheus
+      type: prometheus
+      access: proxy
+      url: http://prometheus:9090
+      isDefault: true
+      editable: false
+      jsonData:
+        httpMethod: POST
+        timeInterval: 30s
+        queryTimeout: 60s
+        manageAlerts: true
+        alerting: true
+        prometheusType: Prometheus
+        prometheusVersion: 2.48.0
+        cacheLevel: High
+        incrementalQuerying: true
+        incrementalQueryOverlapWindow: 10m
+        disableRecordingRules: false
+      secureJsonData: {}
+    
+    - name: AlertManager
+      type: alertmanager
+      access: proxy
+      url: http://alertmanager:9093
+      editable: false
+      jsonData:
+        implementation: prometheus
+        handleGrafanaManagedAlerts: false
+      secureJsonData: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-providers
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: configuration
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+    - name: 'default'
+      orgId: 1
+      folder: ''
+      type: file
+      disableDeletion: false
+      editable: true
+      allowUiUpdates: true
+      options:
+        path: /var/lib/grafana/dashboards
+    
+    - name: 'security'
+      orgId: 1
+      folder: 'Security'
+      type: file
+      disableDeletion: false
+      editable: true
+      allowUiUpdates: true
+      options:
+        path: /var/lib/grafana/dashboards/security
+    
+    - name: 'kubernetes'
+      orgId: 1
+      folder: 'Kubernetes'
+      type: file
+      disableDeletion: false
+      editable: true
+      allowUiUpdates: true
+      options:
+        path: /var/lib/grafana/dashboards/kubernetes
+    
+    - name: 'gitlab'
+      orgId: 1
+      folder: 'GitLab'
+      type: file
+      disableDeletion: false
+      editable: true
+      allowUiUpdates: true
+      options:
+        path: /var/lib/grafana/dashboards/gitlab
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-secrets
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: configuration
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+type: Opaque
+stringData:
+  admin_password: "SecureAdminPassword123!"
+  secret_key: "SW2YcwTIb9zpOOhoPsMm"
