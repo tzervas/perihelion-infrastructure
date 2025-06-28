@@ -1,0 +1,151 @@
+---
+# Pod Security Standards for gitlab-runner-system namespace
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: gitlab-runner-system-limits
+  namespace: gitlab-runner-system
+  labels:
+    app.kubernetes.io/name: gitlab-runner-controller
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  limits:
+  # Container limits
+  - type: Container
+    default:
+      cpu: "500m"
+      memory: "512Mi"
+      ephemeral-storage: "1Gi"
+    defaultRequest:
+      cpu: "100m"
+      memory: "128Mi"
+      ephemeral-storage: "100Mi"
+    max:
+      cpu: "2000m"
+      memory: "2Gi"
+      ephemeral-storage: "5Gi"
+    min:
+      cpu: "10m"
+      memory: "32Mi"
+      ephemeral-storage: "10Mi"
+  # Pod limits
+  - type: Pod
+    max:
+      cpu: "4000m"
+      memory: "4Gi"
+      ephemeral-storage: "10Gi"
+---
+# Resource quota for gitlab-runner-system namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: gitlab-runner-system-quota
+  namespace: gitlab-runner-system
+  labels:
+    app.kubernetes.io/name: gitlab-runner-controller
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  hard:
+    # Compute resources
+    requests.cpu: "2000m"
+    requests.memory: "4Gi"
+    requests.ephemeral-storage: "10Gi"
+    limits.cpu: "4000m"
+    limits.memory: "8Gi"
+    limits.ephemeral-storage: "20Gi"
+    # Object counts
+    count/pods: "10"
+    count/services: "5"
+    count/secrets: "10"
+    count/configmaps: "10"
+    count/persistentvolumeclaims: "5"
+    # Storage
+    requests.storage: "50Gi"
+---
+# Pod Security Standards for gitlab-runners namespace
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: gitlab-runners-limits
+  namespace: gitlab-runners
+  labels:
+    app.kubernetes.io/name: gitlab-runners
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  limits:
+  # Container limits for runner pods
+  - type: Container
+    default:
+      cpu: "1000m"
+      memory: "1Gi"
+      ephemeral-storage: "2Gi"
+    defaultRequest:
+      cpu: "200m"
+      memory: "256Mi"
+      ephemeral-storage: "500Mi"
+    max:
+      cpu: "4000m"
+      memory: "8Gi"
+      ephemeral-storage: "20Gi"
+    min:
+      cpu: "50m"
+      memory: "64Mi"
+      ephemeral-storage: "100Mi"
+  # Pod limits for runner pods
+  - type: Pod
+    max:
+      cpu: "8000m"
+      memory: "16Gi"
+      ephemeral-storage: "40Gi"
+---
+# Resource quota for gitlab-runners namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: gitlab-runners-quota
+  namespace: gitlab-runners
+  labels:
+    app.kubernetes.io/name: gitlab-runners
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  hard:
+    # Compute resources (generous for CI workloads)
+    requests.cpu: "20000m"
+    requests.memory: "40Gi"
+    requests.ephemeral-storage: "200Gi"
+    limits.cpu: "40000m"
+    limits.memory: "80Gi"
+    limits.ephemeral-storage: "400Gi"
+    # Object counts
+    count/pods: "50"
+    count/services: "10"
+    count/secrets: "20"
+    count/configmaps: "20"
+    count/persistentvolumeclaims: "10"
+    # Storage
+    requests.storage: "500Gi"
+---
+# Pod Disruption Budget for controller
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gitlab-runner-controller-pdb
+  namespace: gitlab-runner-system
+  labels:
+    app.kubernetes.io/name: gitlab-runner-controller
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gitlab-runner-controller

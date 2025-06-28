@@ -1,0 +1,305 @@
+# Default values for gitlab-runner-controller
+# This file contains secure defaults and can be overridden
+
+# Global configuration
+global:
+  # Image registry
+  imageRegistry: ""
+  # Pull secrets for private registries
+  imagePullSecrets: []
+  # Storage class for persistent volumes
+  storageClass: ""
+
+# Common configuration
+common:
+  enabled: false
+
+# Image configuration
+image:
+  registry: docker.io
+  repository: gitlab-runner-controller
+  tag: "latest"
+  digest: ""
+  pullPolicy: IfNotPresent
+
+# Security context (pod-level)
+podSecurityContext:
+  enabled: true
+  runAsNonRoot: true
+  runAsUser: 65534
+  runAsGroup: 65534
+  fsGroup: 65534
+  seccompProfile:
+    type: RuntimeDefault
+
+# Security context (container-level)
+containerSecurityContext:
+  enabled: true
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65534
+  runAsGroup: 65534
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+# Controller configuration
+controller:
+  # Number of replicas
+  replicaCount: 2
+  
+  # Update strategy
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  
+  # Resource configuration
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+      ephemeral-storage: 100Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+      ephemeral-storage: 1Gi
+  
+  # Autoscaling
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 80
+  
+  # Node selection
+  nodeSelector:
+    kubernetes.io/arch: amd64
+  
+  # Tolerations
+  tolerations:
+    - key: node.kubernetes.io/not-ready
+      operator: Exists
+      effect: NoExecute
+      tolerationSeconds: 300
+    - key: node.kubernetes.io/unreachable
+      operator: Exists
+      effect: NoExecute
+      tolerationSeconds: 300
+  
+  # Affinity rules
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: gitlab-runner-controller
+            topologyKey: kubernetes.io/hostname
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: DoesNotExist
+
+# Service configuration
+service:
+  # Metrics service
+  metrics:
+    enabled: true
+    type: ClusterIP
+    port: 8080
+    targetPort: metrics
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8080"
+      prometheus.io/path: "/metrics"
+  
+  # Health service
+  health:
+    enabled: true
+    type: ClusterIP
+    port: 8081
+    targetPort: health
+
+# ServiceMonitor for Prometheus
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s
+  honorLabels: true
+  metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: 'go_.*'
+      action: drop
+    - sourceLabels: [__name__]
+      regex: 'process_.*'
+      action: drop
+
+# Health checks
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: health
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /ready
+    port: health
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  successThreshold: 1
+  failureThreshold: 3
+
+startupProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: health
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  successThreshold: 1
+  failureThreshold: 10
+
+# Configuration
+config:
+  # GitLab configuration
+  gitlab:
+    url: "https://gitlab.example.com"
+    token: ""  # Set via secret
+    apiVersion: "v4"
+    timeout: 30
+    retryAttempts: 3
+    rateLimit:
+      requestsPerMinute: 100
+      burstSize: 10
+  
+  # Kubernetes configuration
+  kubernetes:
+    namespace: "gitlab-runners"
+    podTemplate:
+      image: "gitlab/gitlab-runner:v16.5.0"
+      imagePullPolicy: "IfNotPresent"
+      restartPolicy: "Never"
+      serviceAccount: "gitlab-runner"
+      resources:
+        requests:
+          cpu: "200m"
+          memory: "256Mi"
+          ephemeral-storage: "500Mi"
+        limits:
+          cpu: "2000m"
+          memory: "2Gi"
+          ephemeral-storage: "5Gi"
+  
+  # Controller settings
+  controller:
+    reconcileInterval: 30
+    metricsPort: 8080
+    healthPort: 8081
+    logLevel: "info"
+    logFormat: "json"
+    enableLeaderElection: true
+  
+  # Scaling configuration
+  scaling:
+    strategy: "adaptive"
+    minReplicas: 1
+    maxReplicas: 10
+    targetUtilization: 80
+    scaleUpThreshold: 85
+    scaleDownThreshold: 30
+    cooldownPeriod: 300
+  
+  # Security settings
+  security:
+    podSecurityPolicy: "restricted"
+    networkPolicy: "strict"
+    vaultIntegration: true
+    secretsRotationInterval: 3600
+  
+  # Monitoring settings
+  monitoring:
+    enabled: true
+    prometheusEndpoint: "/metrics"
+    healthEndpoint: "/health"
+    readinessEndpoint: "/ready"
+
+# RBAC configuration
+rbac:
+  create: true
+  
+# Service account
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automountServiceAccountToken: true
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Network Policy
+networkPolicy:
+  enabled: true
+  ingress:
+    enabled: true
+    from:
+      - namespaceSelector:
+          matchLabels:
+            name: monitoring
+  egress:
+    enabled: true
+    to:
+      - {}  # Allow all egress (GitLab, K8s API, DNS)
+
+# Security policies
+podSecurityPolicy:
+  enabled: false  # Use Pod Security Standards instead
+
+# Persistence (for cache and temporary files)
+persistence:
+  enabled: false
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 1Gi
+
+# Secrets management
+secrets:
+  # External secret management
+  external:
+    enabled: false
+    provider: "vault"  # vault, aws-secrets-manager, etc.
+  
+  # Manual secret creation
+  create: true
+  gitlabToken: ""
+  vaultToken: ""
+
+# Monitoring and observability
+monitoring:
+  enabled: true
+  grafana:
+    dashboards:
+      enabled: true
+  alerts:
+    enabled: true

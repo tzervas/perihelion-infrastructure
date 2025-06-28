@@ -1,0 +1,37 @@
+apiVersion: v2
+name: gitlab-runner-controller
+description: A secure, production-ready GitLab Runner Controller for Kubernetes
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - gitlab
+  - ci-cd
+  - kubernetes
+  - runner
+  - controller
+  - security
+
+home: https://github.com/tzervas/perihelion-auth-manager
+sources:
+  - https://github.com/tzervas/perihelion-auth-manager
+
+maintainers:
+  - name: Tyler Zervas
+    email: tyler@example.com
+
+annotations:
+  category: Infrastructure
+  licenses: MIT
+  security.perihelion.io/security-hardened: "true"
+  security.perihelion.io/pod-security-standard: "restricted"
+  monitoring.perihelion.io/prometheus-support: "true"
+
+dependencies:
+  - name: common
+    repository: https://charts.bitnami.com/bitnami
+    version: 2.x.x
+    condition: common.enabled
+
+engine: gotpl

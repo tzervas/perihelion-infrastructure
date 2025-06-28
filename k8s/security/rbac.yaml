@@ -1,0 +1,181 @@
+---
+# Service Account for GitLab Runner Controller
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gitlab-runner-controller
+  namespace: gitlab-runner-system
+  labels:
+    app.kubernetes.io/name: gitlab-runner-controller
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    # Security annotations
+    security.perihelion.io/service-account-type: "controller"
+    security.perihelion.io/least-privilege: "true"
+automountServiceAccountToken: true
+---
+# Service Account for GitLab Runners
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gitlab-runner
+  namespace: gitlab-runners
+  labels:
+    app.kubernetes.io/name: gitlab-runners
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    # Security annotations
+    security.perihelion.io/service-account-type: "runner"
+    security.perihelion.io/least-privilege: "true"
+automountServiceAccountToken: true
+---
+# ClusterRole for GitLab Runner Controller
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gitlab-runner-controller
+  labels:
+    app.kubernetes.io/name: gitlab-runner-controller
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+rules:
+# Pod management in gitlab-runners namespace
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+  resourceNames: []
+# Pod logs access for monitoring
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list"]
+# Events for monitoring and debugging
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list", "watch", "create"]
+# Metrics access
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list"]
+# Node information for scheduling decisions
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
+# Namespace information
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list", "watch"]
+  resourceNames: ["gitlab-runners"]
+---
+# Role for GitLab Runner Controller in gitlab-runner-system namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: gitlab-runner-system
+  name: gitlab-runner-controller-local
+  labels:
+    app.kubernetes.io/name: gitlab-runner-controller
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+rules:
+# ConfigMaps for configuration
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+# Secrets for authentication
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch"]
+# Events for local monitoring
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list", "watch", "create"]
+---
+# Role for GitLab Runners in their namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: gitlab-runners
+  name: gitlab-runner
+  labels:
+    app.kubernetes.io/name: gitlab-runners
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+rules:
+# Secrets for runner tokens and configuration
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch"]
+# ConfigMaps for runner configuration
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+# Events for logging
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create"]
+---
+# ClusterRoleBinding for GitLab Runner Controller
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gitlab-runner-controller
+  labels:
+    app.kubernetes.io/name: gitlab-runner-controller
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+subjects:
+- kind: ServiceAccount
+  name: gitlab-runner-controller
+  namespace: gitlab-runner-system
+roleRef:
+  kind: ClusterRole
+  name: gitlab-runner-controller
+  apiGroup: rbac.authorization.k8s.io
+---
+# RoleBinding for GitLab Runner Controller in its namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gitlab-runner-controller-local
+  namespace: gitlab-runner-system
+  labels:
+    app.kubernetes.io/name: gitlab-runner-controller
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+subjects:
+- kind: ServiceAccount
+  name: gitlab-runner-controller
+  namespace: gitlab-runner-system
+roleRef:
+  kind: Role
+  name: gitlab-runner-controller-local
+  apiGroup: rbac.authorization.k8s.io
+---
+# RoleBinding for GitLab Runners
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gitlab-runner
+  namespace: gitlab-runners
+  labels:
+    app.kubernetes.io/name: gitlab-runners
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+subjects:
+- kind: ServiceAccount
+  name: gitlab-runner
+  namespace: gitlab-runners
+roleRef:
+  kind: Role
+  name: gitlab-runner
+  apiGroup: rbac.authorization.k8s.io

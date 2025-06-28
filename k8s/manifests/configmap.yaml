@@ -1,0 +1,105 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitlab-runner-controller-config
+  namespace: gitlab-runner-system
+  labels:
+    app.kubernetes.io/name: gitlab-runner-controller
+    app.kubernetes.io/component: configuration
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+data:
+  config.yaml: |
+    # GitLab Runner Controller Configuration
+    gitlab:
+      url: "https://gitlab.example.com"
+      api_version: "v4"
+      timeout: 30
+      retry_attempts: 3
+      rate_limit:
+        requests_per_minute: 100
+        burst_size: 10
+    
+    kubernetes:
+      namespace: "gitlab-runners"
+      pod_template:
+        image: "gitlab/gitlab-runner:v16.5.0"
+        image_pull_policy: "IfNotPresent"
+        restart_policy: "Never"
+        service_account: "gitlab-runner"
+        automount_service_account_token: true
+        security_context:
+          run_as_non_root: true
+          run_as_user: 999
+          run_as_group: 999
+          fs_group: 999
+          seccomp_profile:
+            type: RuntimeDefault
+          capabilities:
+            drop:
+              - ALL
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+            ephemeral-storage: "500Mi"
+          limits:
+            cpu: "2000m"
+            memory: "2Gi"
+            ephemeral-storage: "5Gi"
+        node_selector:
+          kubernetes.io/arch: "amd64"
+        tolerations: []
+        affinity:
+          node_affinity:
+            preferred_during_scheduling_ignored_during_execution:
+            - weight: 100
+              preference:
+                match_expressions:
+                - key: "node-role.kubernetes.io/worker"
+                  operator: In
+                  values: ["true"]
+    
+    controller:
+      reconcile_interval: 30
+      metrics_port: 8080
+      health_port: 8081
+      log_level: "info"
+      log_format: "json"
+      enable_leader_election: true
+      leader_election_namespace: "gitlab-runner-system"
+      
+    scaling:
+      strategy: "adaptive"
+      min_replicas: 1
+      max_replicas: 10
+      target_utilization: 80
+      scale_up_threshold: 85
+      scale_down_threshold: 30
+      cooldown_period: 300
+      
+    security:
+      pod_security_policy: "restricted"
+      network_policy: "strict"
+      vault_integration: true
+      secrets_rotation_interval: 3600
+      
+    monitoring:
+      enabled: true
+      prometheus_endpoint: "/metrics"
+      health_endpoint: "/health"
+      readiness_endpoint: "/ready"
+      
+    anomaly_detection:
+      enabled: true
+      cpu_threshold: 90
+      memory_threshold: 85
+      network_threshold: 80
+      disk_threshold: 75
+      
+    rate_limiting:
+      enabled: true
+      window_size: 60
+      max_requests: 100
+      block_duration: 300
