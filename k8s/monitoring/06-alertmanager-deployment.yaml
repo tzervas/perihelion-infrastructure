@@ -125,8 +125,8 @@ spec:
         - '--web.external-url=http://alertmanager.monitoring.svc.cluster.local:9093'
         - '--web.route-prefix=/'
         - '--cluster.listen-address=:9094'
-        - '--cluster.peer=alertmanager-0.alertmanager.monitoring.svc.cluster.local:9094'
-        - '--cluster.peer=alertmanager-1.alertmanager.monitoring.svc.cluster.local:9094'
+        # Use headless service DNS for dynamic peer discovery
+        - '--cluster.peer=alertmanager.monitoring.svc.cluster.local:9094'
         - '--log.level=info'
         - '--log.format=json'
         
