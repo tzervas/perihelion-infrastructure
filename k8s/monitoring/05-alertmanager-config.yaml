@@ -1,0 +1,338 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/component: configuration
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+data:
+  alertmanager.yml: |
+    global:
+      # Global SMTP configuration
+      smtp_smarthost: 'localhost:587'
+      smtp_from: 'alerts@perihelion.local'
+      smtp_auth_username: 'alerts@perihelion.local'
+      smtp_auth_password_file: '/etc/alertmanager/secrets/smtp_password'
+      smtp_require_tls: true
+      
+      # Global Slack configuration
+      slack_api_url_file: '/etc/alertmanager/secrets/slack_webhook_url'
+      
+      # Default template paths
+      templates:
+      - '/etc/alertmanager/templates/*.tmpl'
+      
+      # Resolve timeout
+      resolve_timeout: 5m
+    
+    # Inhibition rules allow to mute a set of alerts given that another alert is firing
+    inhibit_rules:
+    # Inhibit 'warning' alerts if 'critical' alert is firing for same service
+    - source_matchers:
+        - severity = "critical"
+      target_matchers:
+        - severity = "warning"
+      equal: ['alertname', 'service', 'instance']
+    
+    # Inhibit 'HighCPUUsage' if 'NodeNotReady' for same instance
+    - source_matchers:
+        - alertname = "NodeNotReady"
+      target_matchers:
+        - alertname = "HighCPUUsage"
+      equal: ['instance']
+    
+    # Route configuration
+    route:
+      group_by: ['cluster', 'alertname', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: 'default-receiver'
+      
+      routes:
+      # Critical security alerts - immediate notification
+      - matchers:
+          - severity = "critical"
+          - category = "security"
+        receiver: 'security-critical'
+        group_wait: 0s
+        repeat_interval: 30m
+        continue: false
+      
+      # Critical application alerts
+      - matchers:
+          - severity = "critical"
+          - category = "application"
+        receiver: 'application-critical'
+        group_wait: 5s
+        repeat_interval: 15m
+        continue: false
+      
+      # Kubernetes infrastructure alerts
+      - matchers:
+          - category = "kubernetes"
+        receiver: 'infrastructure-alerts'
+        group_wait: 30s
+        repeat_interval: 2h
+        continue: false
+      
+      # Security warnings
+      - matchers:
+          - category = "security"
+          - severity = "warning"
+        receiver: 'security-warnings'
+        group_wait: 1m
+        repeat_interval: 4h
+        continue: false
+      
+      # GitLab Runner Controller specific alerts
+      - matchers:
+          - job = "gitlab-runner-controller"
+        receiver: 'gitlab-alerts'
+        group_wait: 30s
+        repeat_interval: 1h
+        continue: false
+      
+      # Default catch-all
+      - receiver: 'default-receiver'
+    
+    receivers:
+    # Default receiver - general notifications
+    - name: 'default-receiver'
+      email_configs:
+      - to: 'admin@perihelion.local'
+        subject: '[{{ .GroupLabels.cluster }}] {{ .GroupLabels.alertname }} ({{ .Status }})'
+        body: |
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Details:
+          {{ range .Labels.SortedPairs }} - {{ .Name }} = {{ .Value }}
+          {{ end }}
+          {{ end }}
+        headers:
+          X-Priority: 'normal'
+          X-Alert-Source: 'perihelion-monitoring'
+      
+      slack_configs:
+      - channel: '#alerts-general'
+        title: '[{{ .GroupLabels.cluster }}] {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          {{ .Annotations.summary }}
+          {{ .Annotations.description }}
+          {{ end }}
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+        send_resolved: true
+    
+    # Critical security alerts - high priority
+    - name: 'security-critical'
+      email_configs:
+      - to: 'security@perihelion.local, admin@perihelion.local'
+        subject: '🚨 CRITICAL SECURITY ALERT [{{ .GroupLabels.cluster }}] {{ .GroupLabels.alertname }}'
+        body: |
+          ⚠️ CRITICAL SECURITY ALERT DETECTED ⚠️
+          
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Severity: CRITICAL
+          Category: SECURITY
+          
+          Immediate Action Required:
+          1. Investigate the security incident
+          2. Check system logs and metrics
+          3. Verify system integrity
+          4. Implement containment measures if needed
+          
+          Alert Details:
+          {{ range .Labels.SortedPairs }} - {{ .Name }} = {{ .Value }}
+          {{ end }}
+          
+          Timestamp: {{ .StartsAt }}
+          {{ end }}
+        headers:
+          X-Priority: 'urgent'
+          X-Alert-Source: 'perihelion-security'
+          X-Alert-Type: 'security-critical'
+      
+      slack_configs:
+      - channel: '#security-alerts'
+        title: '🚨 CRITICAL SECURITY ALERT'
+        text: |
+          {{ range .Alerts }}
+          **{{ .Annotations.summary }}**
+          {{ .Annotations.description }}
+          
+          ⚡ **Immediate action required!**
+          {{ end }}
+        color: '#FF0000'
+        send_resolved: true
+    
+    # Critical application alerts
+    - name: 'application-critical'
+      email_configs:
+      - to: 'devops@perihelion.local, admin@perihelion.local'
+        subject: '🔥 CRITICAL APPLICATION ALERT [{{ .GroupLabels.cluster }}] {{ .GroupLabels.alertname }}'
+        body: |
+          🔥 CRITICAL APPLICATION ISSUE DETECTED 🔥
+          
+          {{ range .Alerts }}
+          Service: {{ .Labels.service | default "Unknown" }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          
+          Impact: Service may be unavailable or degraded
+          
+          Troubleshooting Steps:
+          1. Check service status and logs
+          2. Verify resource availability
+          3. Check dependencies
+          4. Escalate if needed
+          
+          Alert Details:
+          {{ range .Labels.SortedPairs }} - {{ .Name }} = {{ .Value }}
+          {{ end }}
+          {{ end }}
+        headers:
+          X-Priority: 'urgent'
+          X-Alert-Source: 'perihelion-applications'
+      
+      slack_configs:
+      - channel: '#app-alerts'
+        title: '🔥 Critical Application Alert'
+        text: |
+          {{ range .Alerts }}
+          **Service:** {{ .Labels.service | default "Unknown" }}
+          **Alert:** {{ .Annotations.summary }}
+          {{ .Annotations.description }}
+          {{ end }}
+        color: '#FF4500'
+        send_resolved: true
+    
+    # Infrastructure alerts
+    - name: 'infrastructure-alerts'
+      email_configs:
+      - to: 'infrastructure@perihelion.local'
+        subject: '[Infrastructure] {{ .GroupLabels.alertname }} - {{ .Status }}'
+        body: |
+          Infrastructure Alert
+          
+          {{ range .Alerts }}
+          Component: {{ .Labels.component | default "Unknown" }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          
+          Infrastructure Details:
+          {{ range .Labels.SortedPairs }} - {{ .Name }} = {{ .Value }}
+          {{ end }}
+          {{ end }}
+        headers:
+          X-Alert-Source: 'perihelion-infrastructure'
+      
+      slack_configs:
+      - channel: '#infrastructure'
+        title: '🏗️ Infrastructure Alert'
+        text: |
+          {{ range .Alerts }}
+          **{{ .Annotations.summary }}**
+          {{ .Annotations.description }}
+          {{ end }}
+        color: '#FFA500'
+        send_resolved: true
+    
+    # Security warnings
+    - name: 'security-warnings'
+      email_configs:
+      - to: 'security@perihelion.local'
+        subject: '[Security Warning] {{ .GroupLabels.alertname }}'
+        body: |
+          Security Warning Detected
+          
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          
+          Recommended Actions:
+          1. Review security logs
+          2. Monitor for escalation
+          3. Update security policies if needed
+          
+          Alert Details:
+          {{ range .Labels.SortedPairs }} - {{ .Name }} = {{ .Value }}
+          {{ end }}
+          {{ end }}
+        headers:
+          X-Alert-Source: 'perihelion-security'
+      
+      slack_configs:
+      - channel: '#security-warnings'
+        title: '⚠️ Security Warning'
+        text: |
+          {{ range .Alerts }}
+          {{ .Annotations.summary }}
+          {{ .Annotations.description }}
+          {{ end }}
+        color: '#FFFF00'
+        send_resolved: true
+    
+    # GitLab Runner Controller alerts
+    - name: 'gitlab-alerts'
+      email_configs:
+      - to: 'gitlab-admin@perihelion.local'
+        subject: '[GitLab] {{ .GroupLabels.alertname }} - {{ .Status }}'
+        body: |
+          GitLab Runner Controller Alert
+          
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          
+          GitLab Impact:
+          - CI/CD pipeline execution may be affected
+          - Runner availability may be reduced
+          
+          Troubleshooting:
+          1. Check GitLab Runner Controller logs
+          2. Verify GitLab API connectivity
+          3. Check Kubernetes cluster health
+          4. Review runner resource usage
+          
+          Alert Details:
+          {{ range .Labels.SortedPairs }} - {{ .Name }} = {{ .Value }}
+          {{ end }}
+          {{ end }}
+        headers:
+          X-Alert-Source: 'perihelion-gitlab'
+      
+      slack_configs:
+      - channel: '#gitlab-ci'
+        title: '🦊 GitLab Runner Alert'
+        text: |
+          {{ range .Alerts }}
+          **{{ .Annotations.summary }}**
+          {{ .Annotations.description }}
+          
+          📋 Check CI/CD pipeline status
+          {{ end }}
+        color: '#FFA500'
+        send_resolved: true
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-secrets
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/component: configuration
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+type: Opaque
+stringData:
+  smtp_password: "PLACEHOLDER_SMTP_PASSWORD"
+  slack_webhook_url: "https://hooks.slack.com/services/PLACEHOLDER_WEBHOOK_URL"

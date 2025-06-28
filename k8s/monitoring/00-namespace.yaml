@@ -1,0 +1,26 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+    security.istio.io/tlsMode: istio
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    app.kubernetes.io/name: monitoring-stack
+    app.kubernetes.io/component: infrastructure
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    # Network policies enforced
+    security.perihelion.io/network-policy: "strict"
+    # Monitoring self-monitoring enabled
+    monitoring.perihelion.io/enabled: "true"
+    # Security scanning enabled
+    security.perihelion.io/scan-enabled: "true"
+    # Resource quotas enforced
+    resource.perihelion.io/quota-enabled: "true"
+    # High availability required
+    availability.perihelion.io/ha-enabled: "true"
