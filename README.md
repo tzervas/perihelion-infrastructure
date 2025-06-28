@@ -1,75 +1,117 @@
-# Private Homelab GitLab Infrastructure
+# 🏗️ Perihelion Infrastructure
 
-A secure, production-grade GitLab self-hosted infrastructure designed with defense-in-depth security principles and optimized for high availability, performance, and scalability.
+**Enterprise-Grade Kubernetes Infrastructure with Security-First GitLab CI/CD Platform**
 
-## Project Overview
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Security](https://img.shields.io/badge/Security-Hardened-green.svg)](./SECURITY.md)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-1.29+-blue.svg)](https://kubernetes.io/)
+[![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://python.org/)
+[![CI/CD](https://img.shields.io/badge/CI%2FCD-Automated-brightgreen.svg)](./.github/workflows/)
+[![Monitoring](https://img.shields.io/badge/Monitoring-Prometheus-orange.svg)](./k8s/monitoring/)
 
-This project implements a comprehensive GitLab infrastructure deployment featuring:
+## 📋 Overview
 
-- **Security-First Design**: Multi-layered security with network segmentation, zero-trust architecture, and comprehensive monitoring
-- **High Availability**: Clustered services with automatic failover and disaster recovery capabilities
-- **Scalable Architecture**: Dynamic runner pools with auto-scaling based on workload demands
-- **Complete Observability**: Comprehensive metrics, logging, and distributed tracing
-- **Infrastructure as Code**: GitOps-based deployment with automated CI/CD pipelines
+Perihelion Infrastructure delivers a comprehensive, production-ready Kubernetes platform featuring secure GitLab CI/CD automation, enterprise monitoring, and defense-in-depth security. Designed for organizations requiring robust, scalable, and secure development infrastructure.
 
-## Architecture Components
+### 🎯 Platform Features
 
-### Core Infrastructure
-- **Kubernetes Platform**: K3s cluster with hardened security configurations
-- **Load Balancing**: HAProxy cluster with SSL termination and session persistence
-- **Service Mesh**: Calico CNI with network policies for microsegmentation
-- **Storage**: Distributed MinIO object storage with erasure coding
+- **🔒 Security-First Architecture**: Zero-trust networking, Pod Security Standards, comprehensive RBAC
+- **📊 Enterprise Monitoring**: Full observability stack with Prometheus, Grafana, and AlertManager
+- **🚀 Intelligent CI/CD**: Auto-scaling GitLab runners with advanced queue management
+- **🛡️ Attack-Resistant Design**: Multi-layer security with threat detection and response
+- **⚡ High Performance**: Optimized resource utilization and efficient scaling algorithms
+- **🔄 Production Operations**: Complete GitOps workflow with automated testing and deployment
+- **🔐 Secrets Management**: Integrated Vault with External Secrets Operator
+- **📝 Centralized Logging**: Secure log aggregation with Fluent Bit and Loki
 
-### Security Layer
-- **Secret Management**: HashiCorp Vault with dynamic secret generation
-- **Certificate Management**: Automated TLS certificate provisioning and rotation
-- **Network Security**: Zero-trust network policies with default-deny rules
-- **Container Security**: Pod Security Standards with runtime security monitoring
+## 🏛️ Platform Architecture
 
-### Supporting Services
-- **Database**: PostgreSQL cluster with synchronous replication
-- **Caching**: Redis cluster for session storage and application caching
-- **Message Queue**: NATS JetStream for reliable event processing
-- **Monitoring**: Prometheus + Grafana with long-term storage via Thanos
+Perihelion Infrastructure implements a comprehensive Kubernetes platform with:
 
-### GitLab Services
-- **GitLab CE**: Core GitLab application with external database and storage
-- **Container Registry**: Integrated Docker registry with vulnerability scanning
-- **Dynamic Runners**: Kubernetes-based runners with automatic scaling
-- **Runner Controller**: Custom controller for intelligent runner management
+### Core Infrastructure Components
 
-## Security Features
+#### 🦊 GitLab Runner Controller
+- **Intelligent Auto-Scaling**: Dynamic runner provisioning based on queue depth and resource utilization
+- **Security-Hardened Execution**: Pod Security Standards with restricted profiles
+- **Comprehensive Monitoring**: Prometheus metrics with Grafana dashboards
+- **Attack Resistance**: Rate limiting, input validation, and anomaly detection
 
-### Defense in Depth
-- Network segmentation with DMZ, application, runner, data, and management zones
-- Pod Security Standards enforcement with runtime security monitoring
-- Comprehensive audit logging with 7-year retention for compliance
-- Intrusion detection system with behavioral analysis
+#### 📊 Monitoring & Observability Stack
+- **Prometheus**: High-availability metrics collection with 30-day retention
+- **Grafana**: Security and CI/CD focused dashboards with automated provisioning
+- **AlertManager**: Multi-channel alerting with intelligent routing and escalation
+- **Security Monitoring**: Threat detection and compliance monitoring dashboards
 
-### Attack Surface Reduction
-- Minimal container images with no unnecessary packages
-- Non-root container execution with read-only file systems
-- Capability dropping and seccomp profiles
-- Network policies with explicit allow rules only
+#### 🔐 Security Infrastructure
+- **Network Policies**: Default-deny with explicit allowlists for zero-trust networking
+- **RBAC**: Least-privilege access controls with service account isolation
+- **Pod Security Standards**: Restricted profile enforcement with security contexts
+- **External Secrets**: Vault integration for secure credential management
 
-### Monitoring and Response
-- Real-time security event correlation
-- Automated incident response playbooks
-- Comprehensive vulnerability management pipeline
-- Regular security assessments and penetration testing
+#### 📋 Supporting Services
+- **Centralized Logging**: Fluent Bit log collection with security classification
+- **Secrets Management**: HashiCorp Vault with Kubernetes authentication
+- **Certificate Management**: Automated TLS provisioning and rotation
+- **Storage**: Persistent volumes with encryption at rest
+
+## 🛡️ Security Features
+
+### Defense-in-Depth Architecture
+- **Network Segmentation**: Strict namespace isolation with network policies
+- **Pod Security**: Comprehensive security contexts and runtime protection
+- **Audit Logging**: Complete activity tracking with long-term retention
+- **Threat Detection**: Real-time security monitoring and alerting
+
+### Attack Surface Minimization
+- **Minimal Images**: Distroless containers with no unnecessary packages
+- **Non-Root Execution**: All containers run as non-privileged users
+- **Read-Only Filesystems**: Immutable container runtime environments
+- **Capability Dropping**: Removal of all unnecessary Linux capabilities
+
+### Compliance & Monitoring
+- **Security Dashboards**: Real-time threat detection and compliance monitoring
+- **Automated Scanning**: Container and infrastructure vulnerability assessments
+- **Incident Response**: Automated alerting with escalation procedures
+- **Compliance Reporting**: Continuous security posture assessment
+
+## 🚀 Project Status
+
+### ✅ Completed Components
+
+- **GitLab Runner Controller**: Full implementation with security hardening
+- **Kubernetes Infrastructure**: Comprehensive manifests with Pod Security Standards
+- **CI/CD Pipelines**: Automated testing, security scanning, and deployment
+- **Monitoring Stack**: Prometheus, Grafana, and AlertManager with dashboards
+- **Security Infrastructure**: Network policies, RBAC, and resource quotas
+
+### 🔄 In Progress
+
+- **Supporting Services**: Vault integration and centralized logging (current branch: `feature/supporting-services`)
+- **Operational Documentation**: Runbooks and incident response procedures
+- **Testing & Validation**: Staging deployment and integration testing
+
+### 📋 Upcoming
+
+- **Production Deployment**: Full production rollout with monitoring
+- **Advanced Features**: Enhanced scaling algorithms and performance optimization
+- **Security Hardening**: Additional security controls and compliance automation
 
 ## Quick Start
 
 ```bash
 # Clone the repository
-git clone https://github.com/tzervas/private-homelab.git
-cd private-homelab
+git clone https://github.com/tzervas/perihelion-auth-manager.git
+cd perihelion-auth-manager
 
-# Install dependencies
-./scripts/install-dependencies.sh
+# Install dependencies with UV
+uv venv
+source .venv/bin/activate
+uv pip install -r requirements-dev.txt
 
-# Deploy the infrastructure
-./scripts/deploy.sh
+# Deploy with Helm or Kustomize
+helm install perihelion-infrastructure helm/gitlab-runner-controller/
+# OR
+kubectl apply -k k8s/
 ```
 
 ## Documentation

@@ -1,0 +1,393 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "🦊 GitLab Runner Controller Dashboard",
+    "tags": ["gitlab", "ci-cd", "runners", "controller"],
+    "style": "dark",
+    "timezone": "UTC",
+    "refresh": "15s",
+    "time": {
+      "from": "now-30m",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h"]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "🏃 Active Runners",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "gitlab_runners_available",
+            "legendFormat": "Available",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 1},
+                {"color": "green", "value": 3}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "📊 Queue Size",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "gitlab_runner_queue_size",
+            "legendFormat": "Queued Jobs",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 10},
+                {"color": "red", "value": 50}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "⚡ Controller Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=\"gitlab-runner-controller\"}",
+            "legendFormat": "Status",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {"type": "value", "value": "0", "text": "DOWN"},
+              {"type": "value", "value": "1", "text": "UP"}
+            ],
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "green", "value": 1}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0}
+      },
+      {
+        "id": 4,
+        "title": "❌ Creation Failures",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "rate(gitlab_runner_creation_failures_total[5m])",
+            "legendFormat": "Failures/sec",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 0.1},
+                {"color": "red", "value": 0.5}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}
+      },
+      {
+        "id": 5,
+        "title": "📈 Runner Lifecycle",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(gitlab_runner_creation_total[5m])",
+            "legendFormat": "Creations/sec",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(gitlab_runner_deletion_total[5m])",
+            "legendFormat": "Deletions/sec",
+            "refId": "B"
+          },
+          {
+            "expr": "gitlab_runners_available",
+            "legendFormat": "Available Runners",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "fillOpacity": 10
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+      },
+      {
+        "id": 6,
+        "title": "🔄 Queue Trends",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "gitlab_runner_queue_size",
+            "legendFormat": "Queue Size",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(gitlab_runner_jobs_processed_total[5m])",
+            "legendFormat": "Jobs Processed/sec",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth"
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 7,
+        "title": "💻 Resource Usage",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(container_cpu_usage_seconds_total{pod=~\"gitlab-runner-controller.*\"}[5m]) * 100",
+            "legendFormat": "CPU Usage %",
+            "refId": "A"
+          },
+          {
+            "expr": "container_memory_usage_bytes{pod=~\"gitlab-runner-controller.*\"} / 1024 / 1024",
+            "legendFormat": "Memory Usage MB",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear"
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      },
+      {
+        "id": 8,
+        "title": "🌐 GitLab API Health",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "rate(gitlab_api_requests_total[5m])",
+            "legendFormat": "API Requests/sec",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(gitlab_api_errors_total[5m])",
+            "legendFormat": "API Errors/sec",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(gitlab_api_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "95th Percentile Latency",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear"
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24}
+      },
+      {
+        "id": 9,
+        "title": "🏃 Runner Distribution by Type",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "count by (runner_type) (gitlab_runner_info)",
+            "legendFormat": "{{runner_type}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "fields": "/^Value$/",
+            "calcs": ["lastNotNull"]
+          },
+          "pieType": "donut",
+          "tooltip": {"mode": "single"},
+          "legend": {
+            "displayMode": "table",
+            "placement": "right",
+            "values": ["value", "percent"]
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32}
+      },
+      {
+        "id": 10,
+        "title": "📋 Recent Activity Log",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "gitlab_runner_events",
+            "legendFormat": "{{event_type}} - {{runner_id}}",
+            "refId": "A"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {},
+              "indexByName": {},
+              "renameByName": {
+                "Time": "Timestamp",
+                "event_type": "Event",
+                "runner_id": "Runner ID",
+                "Value": "Count"
+              }
+            }
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32}
+      },
+      {
+        "id": 11,
+        "title": "🎯 SLA Metrics",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "(sum(rate(gitlab_runner_jobs_success_total[5m])) / sum(rate(gitlab_runner_jobs_total[5m]))) * 100",
+            "legendFormat": "Success Rate %",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "min": 0,
+            "max": 100,
+            "unit": "percent",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 95},
+                {"color": "green", "value": 99}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 4, "w": 8, "x": 0, "y": 40}
+      },
+      {
+        "id": 12,
+        "title": "⏱️ Average Job Duration",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "rate(gitlab_runner_job_duration_seconds_sum[5m]) / rate(gitlab_runner_job_duration_seconds_count[5m])",
+            "legendFormat": "Avg Duration",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 300},
+                {"color": "red", "value": 600}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 4, "w": 8, "x": 8, "y": 40}
+      },
+      {
+        "id": 13,
+        "title": "🚀 Scaling Efficiency",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "gitlab_runners_available / gitlab_runners_capacity * 100",
+            "legendFormat": "Utilization %",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "min": 0,
+            "max": 100,
+            "unit": "percent",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 50},
+                {"color": "green", "value": 70}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 4, "w": 8, "x": 16, "y": 40}
+      }
+    ]
+  }
+}
