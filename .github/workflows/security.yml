@@ -1,0 +1,583 @@
+name: "🔒 Security Scanning"
+
+on:
+  schedule:
+    # Run security scans daily at 3 AM UTC
+    - cron: "0 3 * * *"
+  push:
+    branches: ["main", "develop"]
+    paths:
+      - "src/**"
+      - "requirements*.txt"
+      - "Dockerfile"
+      - "k8s/**"
+      - "helm/**"
+  pull_request:
+    branches: ["main", "develop"]
+    paths:
+      - "src/**"
+      - "requirements*.txt"
+      - "Dockerfile"
+      - "k8s/**"
+      - "helm/**"
+  workflow_dispatch:
+    inputs:
+      scan_type:
+        description: "Type of security scan to run"
+        required: true
+        type: choice
+        options:
+          - "all"
+          - "sast"
+          - "dependencies"
+          - "containers"
+          - "infrastructure"
+        default: "all"
+      severity_threshold:
+        description: "Minimum severity level to report"
+        required: false
+        type: choice
+        options:
+          - "LOW"
+          - "MEDIUM"
+          - "HIGH"
+          - "CRITICAL"
+        default: "MEDIUM"
+
+env:
+  PYTHON_VERSION: "3.12"
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  pull-requests: write
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Static Application Security Testing (SAST)
+  sast-scan:
+    name: "🔍 SAST Scan"
+    runs-on: ubuntu-latest
+    if: github.event.inputs.scan_type == 'all' || github.event.inputs.scan_type == 'sast' || github.event.inputs.scan_type == ''
+    permissions:
+      contents: read
+      security-events: write
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: "🐍 Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: "📦 Install security tools"
+        run: |
+          pip install bandit[toml] semgrep safety
+      
+      - name: "🔒 Run Bandit security scanner"
+        run: |
+          echo "Running Bandit security analysis..."
+          bandit -r src/ \
+            -f json \
+            -o bandit-results.json \
+            --severity-level medium \
+            --confidence-level medium || true
+          
+          # Generate human-readable report
+          bandit -r src/ \
+            -f txt \
+            --severity-level medium \
+            --confidence-level medium || true
+      
+      - name: "📊 Convert Bandit results to SARIF"
+        run: |
+          python3 << 'EOF'
+          import json
+          import sys
+          from datetime import datetime
+          
+          # Load Bandit results
+          try:
+              with open('bandit-results.json', 'r') as f:
+                  bandit_data = json.load(f)
+          except FileNotFoundError:
+              print("No Bandit results found")
+              sys.exit(0)
+          
+          # Convert to SARIF format
+          sarif = {
+              "version": "2.1.0",
+              "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+              "runs": [{
+                  "tool": {
+                      "driver": {
+                          "name": "Bandit",
+                          "informationUri": "https://bandit.readthedocs.io/",
+                          "version": "1.7.5"
+                      }
+                  },
+                  "results": []
+              }]
+          }
+          
+          for result in bandit_data.get('results', []):
+              severity_map = {
+                  'LOW': 'note',
+                  'MEDIUM': 'warning', 
+                  'HIGH': 'error'
+              }
+              
+              sarif_result = {
+                  "ruleId": result['test_id'],
+                  "level": severity_map.get(result['issue_severity'], 'warning'),
+                  "message": {
+                      "text": result['issue_text']
+                  },
+                  "locations": [{
+                      "physicalLocation": {
+                          "artifactLocation": {
+                              "uri": result['filename']
+                          },
+                          "region": {
+                              "startLine": result['line_number']
+                          }
+                      }
+                  }]
+              }
+              sarif['runs'][0]['results'].append(sarif_result)
+          
+          with open('bandit-sarif.json', 'w') as f:
+              json.dump(sarif, f, indent=2)
+          EOF
+      
+      - name: "🔍 Run Semgrep security scanner"
+        run: |
+          echo "Running Semgrep security analysis..."
+          semgrep --config=auto \
+            --json \
+            --output=semgrep-results.json \
+            src/ || true
+          
+          # Convert to SARIF
+          semgrep --config=auto \
+            --sarif \
+            --output=semgrep-results.sarif \
+            src/ || true
+      
+      - name: "📤 Upload Bandit SARIF results"
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: bandit-sarif.json
+          category: bandit
+      
+      - name: "📤 Upload Semgrep SARIF results"
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep-results.sarif
+          category: semgrep
+      
+      - name: "📊 Upload SAST artifacts"
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sast-results
+          path: |
+            bandit-results.json
+            bandit-sarif.json
+            semgrep-results.json
+            semgrep-results.sarif
+          retention-days: 30
+
+  # Dependency scanning
+  dependency-scan:
+    name: "📦 Dependency Scan"
+    runs-on: ubuntu-latest
+    if: github.event.inputs.scan_type == 'all' || github.event.inputs.scan_type == 'dependencies' || github.event.inputs.scan_type == ''
+    permissions:
+      contents: read
+      security-events: write
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+      
+      - name: "🐍 Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: "📦 Install dependencies"
+        run: |
+          pip install safety pip-audit
+          pip install -r requirements.txt -r requirements-dev.txt
+      
+      - name: "🔍 Run Safety scanner"
+        run: |
+          echo "Running Safety vulnerability scanner..."
+          safety check \
+            --json \
+            --output safety-results.json || true
+          
+          # Generate text report
+          safety check || true
+      
+      - name: "🔍 Run pip-audit scanner"
+        run: |
+          echo "Running pip-audit vulnerability scanner..."
+          pip-audit \
+            --format=json \
+            --output=pip-audit-results.json || true
+          
+          # Generate text report
+          pip-audit || true
+      
+      - name: "🔍 Run Trivy filesystem scan"
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-fs-results.sarif"
+          severity: ${{ github.event.inputs.severity_threshold || 'MEDIUM' }}
+      
+      - name: "📤 Upload Trivy SARIF results"
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-fs-results.sarif
+          category: trivy-filesystem
+      
+      - name: "📊 Upload dependency scan artifacts"
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dependency-scan-results
+          path: |
+            safety-results.json
+            pip-audit-results.json
+            trivy-fs-results.sarif
+          retention-days: 30
+
+  # Container security scanning
+  container-scan:
+    name: "🐳 Container Security Scan"
+    runs-on: ubuntu-latest
+    if: github.event.inputs.scan_type == 'all' || github.event.inputs.scan_type == 'containers' || github.event.inputs.scan_type == ''
+    permissions:
+      contents: read
+      security-events: write
+      packages: read
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+      
+      - name: "🔧 Set up Docker Buildx"
+        uses: docker/setup-buildx-action@v3
+      
+      - name: "🔨 Build container image"
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: gitlab-runner-controller:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: "🔍 Run Trivy container scan"
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "gitlab-runner-controller:scan"
+          format: "sarif"
+          output: "trivy-container-results.sarif"
+          severity: ${{ github.event.inputs.severity_threshold || 'MEDIUM' }}
+      
+      - name: "🔍 Run Grype container scan"
+        run: |
+          # Install Grype
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          
+          # Run Grype scan
+          grype gitlab-runner-controller:scan \
+            -o json \
+            --file grype-results.json || true
+          
+          # Generate text report
+          grype gitlab-runner-controller:scan || true
+      
+      - name: "🔍 Run Dockle container linter"
+        run: |
+          # Install Dockle
+          curl -L -o dockle.deb https://github.com/goodwithtech/dockle/releases/download/v0.4.14/dockle_0.4.14_Linux-64bit.deb
+          sudo dpkg -i dockle.deb
+          
+          # Run Dockle scan
+          dockle \
+            --format json \
+            --output dockle-results.json \
+            gitlab-runner-controller:scan || true
+          
+          # Generate text report
+          dockle gitlab-runner-controller:scan || true
+      
+      - name: "📤 Upload Trivy container SARIF results"
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-container-results.sarif
+          category: trivy-container
+      
+      - name: "📊 Upload container scan artifacts"
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: container-scan-results
+          path: |
+            trivy-container-results.sarif
+            grype-results.json
+            dockle-results.json
+          retention-days: 30
+
+  # Infrastructure security scanning
+  infrastructure-scan:
+    name: "🏗️ Infrastructure Security Scan"
+    runs-on: ubuntu-latest
+    if: github.event.inputs.scan_type == 'all' || github.event.inputs.scan_type == 'infrastructure' || github.event.inputs.scan_type == ''
+    permissions:
+      contents: read
+      security-events: write
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+      
+      - name: "🔍 Run Checkov IaC scanner"
+        run: |
+          pip install checkov
+          
+          # Scan Kubernetes manifests
+          checkov -d k8s/ \
+            --framework kubernetes \
+            --output json \
+            --output-file checkov-k8s-results.json || true
+          
+          # Scan Dockerfile
+          checkov -f Dockerfile \
+            --framework dockerfile \
+            --output json \
+            --output-file checkov-docker-results.json || true
+          
+          # Generate text reports
+          checkov -d k8s/ --framework kubernetes || true
+          checkov -f Dockerfile --framework dockerfile || true
+      
+      - name: "🔍 Run Kubesec scanner"
+        run: |
+          # Install kubesec
+          curl -sSX GET "https://api.github.com/repos/controlplaneio/kubesec/releases/latest" \
+            | grep -E "browser_download_url.*linux" \
+            | cut -d '"' -f 4 \
+            | xargs -I {} curl -sSL {} -o kubesec
+          chmod +x kubesec
+          
+          # Scan Kubernetes manifests
+          find k8s/ -name "*.yaml" -type f | while read -r file; do
+            echo "Scanning $file"
+            ./kubesec scan "$file" > "kubesec-$(basename "$file" .yaml).json" || true
+          done
+      
+      - name: "🔍 Run Trivy config scan"
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "config"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-config-results.sarif"
+          severity: ${{ github.event.inputs.severity_threshold || 'MEDIUM' }}
+      
+      - name: "🔍 Run Kube-score scanner"
+        run: |
+          # Install kube-score
+          wget https://github.com/zegl/kube-score/releases/download/v1.17.0/kube-score_1.17.0_linux_amd64.tar.gz
+          tar xzf kube-score_1.17.0_linux_amd64.tar.gz
+          chmod +x kube-score
+          
+          # Scan Kubernetes manifests
+          find k8s/manifests/ -name "*.yaml" -type f | while read -r file; do
+            echo "Analyzing $file with kube-score"
+            ./kube-score score "$file" --output-format json > "kube-score-$(basename "$file" .yaml).json" || true
+          done
+      
+      - name: "📤 Upload Trivy config SARIF results"
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-config-results.sarif
+          category: trivy-config
+      
+      - name: "📊 Upload infrastructure scan artifacts"
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: infrastructure-scan-results
+          path: |
+            checkov-*.json
+            kubesec-*.json
+            kube-score-*.json
+            trivy-config-results.sarif
+          retention-days: 30
+
+  # Secret scanning
+  secret-scan:
+    name: "🔑 Secret Scanning"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: "🔍 Run GitGuardian secret scanner"
+        uses: GitGuardian/ggshield-action@v1
+        env:
+          GITHUB_PUSH_BEFORE_SHA: ${{ github.event.before }}
+          GITHUB_PUSH_BASE_SHA: ${{ github.event.base }}
+          GITHUB_PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+        continue-on-error: true
+      
+      - name: "🔍 Run TruffleHog secret scanner"
+        run: |
+          # Install TruffleHog
+          curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
+          
+          # Run TruffleHog scan
+          trufflehog git file://. \
+            --json \
+            --output trufflehog-results.json || true
+      
+      - name: "📊 Upload secret scan artifacts"
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: secret-scan-results
+          path: |
+            trufflehog-results.json
+          retention-days: 30
+
+  # Security compliance check
+  compliance-check:
+    name: "📋 Security Compliance Check"
+    runs-on: ubuntu-latest
+    needs: [sast-scan, dependency-scan, container-scan, infrastructure-scan]
+    if: always()
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+      
+      - name: "📋 Generate security compliance report"
+        run: |
+          echo "# 🔒 Security Compliance Report" > security-report.md
+          echo "" >> security-report.md
+          echo "**Generated:** $(date -u)" >> security-report.md
+          echo "**Repository:** ${{ github.repository }}" >> security-report.md
+          echo "**Commit:** ${{ github.sha }}" >> security-report.md
+          echo "" >> security-report.md
+          
+          echo "## 🛡️ Security Scan Results" >> security-report.md
+          echo "" >> security-report.md
+          
+          # SAST Results
+          echo "### Static Application Security Testing (SAST)" >> security-report.md
+          echo "- **Status:** ${{ needs.sast-scan.result }}" >> security-report.md
+          echo "- **Scanner:** Bandit, Semgrep" >> security-report.md
+          echo "" >> security-report.md
+          
+          # Dependency Results
+          echo "### Dependency Scanning" >> security-report.md
+          echo "- **Status:** ${{ needs.dependency-scan.result }}" >> security-report.md
+          echo "- **Scanner:** Safety, pip-audit, Trivy" >> security-report.md
+          echo "" >> security-report.md
+          
+          # Container Results
+          echo "### Container Security Scanning" >> security-report.md
+          echo "- **Status:** ${{ needs.container-scan.result }}" >> security-report.md
+          echo "- **Scanner:** Trivy, Grype, Dockle" >> security-report.md
+          echo "" >> security-report.md
+          
+          # Infrastructure Results
+          echo "### Infrastructure Security Scanning" >> security-report.md
+          echo "- **Status:** ${{ needs.infrastructure-scan.result }}" >> security-report.md
+          echo "- **Scanner:** Checkov, Kubesec, Trivy, Kube-score" >> security-report.md
+          echo "" >> security-report.md
+          
+          echo "## 📊 Compliance Status" >> security-report.md
+          echo "" >> security-report.md
+          
+          # Check overall compliance
+          if [[ "${{ needs.sast-scan.result }}" == "success" && \
+                "${{ needs.dependency-scan.result }}" == "success" && \
+                "${{ needs.container-scan.result }}" == "success" && \
+                "${{ needs.infrastructure-scan.result }}" == "success" ]]; then
+            echo "✅ **Overall Status:** COMPLIANT" >> security-report.md
+            echo "" >> security-report.md
+            echo "All security scans completed successfully with no critical issues found." >> security-report.md
+          else
+            echo "❌ **Overall Status:** NON-COMPLIANT" >> security-report.md
+            echo "" >> security-report.md
+            echo "One or more security scans failed or found critical issues. Please review the scan results." >> security-report.md
+          fi
+          
+          echo "" >> security-report.md
+          echo "## 🔧 Remediation Actions" >> security-report.md
+          echo "" >> security-report.md
+          echo "1. Review security scan artifacts for detailed findings" >> security-report.md
+          echo "2. Address any critical or high severity vulnerabilities" >> security-report.md
+          echo "3. Update dependencies with known security issues" >> security-report.md
+          echo "4. Fix container security best practice violations" >> security-report.md
+          echo "5. Remediate infrastructure misconfigurations" >> security-report.md
+          
+          cat security-report.md
+      
+      - name: "💬 Comment security report on PR"
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('security-report.md', 'utf8');
+            
+            const { owner, repo, number } = context.issue;
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: number,
+              body: report
+            });
+      
+      - name: "📊 Upload compliance report"
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-compliance-report
+          path: security-report.md
+          retention-days: 90

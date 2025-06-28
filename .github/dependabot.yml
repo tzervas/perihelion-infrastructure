@@ -1,0 +1,128 @@
+version: 2
+
+updates:
+  # Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "tzervas"
+    assignees:
+      - "tzervas"
+    labels:
+      - "dependencies"
+      - "python"
+      - "security"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    # Security updates for critical and high severity vulnerabilities
+    allow:
+      - dependency-type: "direct"
+        update-type: "version-update:semver-patch"
+      - dependency-type: "direct"
+        update-type: "version-update:semver-minor"
+      - dependency-type: "indirect"
+        update-type: "security-update"
+    ignore:
+      # Ignore major version updates for stability
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    # Group related dependencies
+    groups:
+      security-tools:
+        patterns:
+          - "bandit*"
+          - "safety*"
+          - "trivy*"
+          - "semgrep*"
+      testing:
+        patterns:
+          - "pytest*"
+          - "coverage*"
+          - "mock*"
+      kubernetes:
+        patterns:
+          - "kubernetes*"
+          - "pykube*"
+          - "kopf*"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "tzervas"
+    assignees:
+      - "tzervas"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "ci-cd"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    # Allow all updates for GitHub Actions
+    allow:
+      - dependency-type: "direct"
+      - dependency-type: "indirect"
+
+  # Docker dependencies
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "tzervas"
+    assignees:
+      - "tzervas"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "security"
+    commit-message:
+      prefix: "docker"
+      include: "scope"
+    # Be more conservative with Docker base images
+    allow:
+      - dependency-type: "direct"
+        update-type: "version-update:semver-patch"
+      - dependency-type: "direct"
+        update-type: "version-update:semver-minor"
+      - dependency-type: "direct"
+        update-type: "security-update"
+
+  # Helm charts (if any helm dependencies are added)
+  - package-ecosystem: "gitsubmodule"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "first-monday"
+      time: "08:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 2
+    reviewers:
+      - "tzervas"
+    assignees:
+      - "tzervas"
+    labels:
+      - "dependencies"
+      - "helm"
+      - "infrastructure"
+    commit-message:
+      prefix: "helm"
+      include: "scope"

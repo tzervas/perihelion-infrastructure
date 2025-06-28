@@ -1,0 +1,349 @@
+name: "🌿 Update Branches"
+
+on:
+  push:
+    branches: ["main"]
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      branches:
+        description: "Specific branches to update (comma-separated, or 'all' for all branches)"
+        required: false
+        default: "all"
+        type: string
+      force_update:
+        description: "Force update even if branch is ahead"
+        required: false
+        default: false
+        type: boolean
+      dry_run:
+        description: "Show what would be updated without making changes"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-branches
+  cancel-in-progress: true
+
+jobs:
+  discover-branches:
+    name: "🔍 Discover Branches"
+    runs-on: ubuntu-latest
+    outputs:
+      branches: ${{ steps.branches.outputs.list }}
+      total: ${{ steps.branches.outputs.total }}
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: "🔍 Discover branches to update"
+        id: branches
+        run: |
+          echo "Discovering branches..."
+          
+          # Get all remote branches except main
+          ALL_BRANCHES=$(git branch -r --format='%(refname:short)' | \
+            grep -v "origin/main" | \
+            grep -v "origin/HEAD" | \
+            sed 's/origin\///' | \
+            sort -u)
+          
+          # Filter branches based on input
+          if [[ "${{ github.event.inputs.branches }}" != "" && "${{ github.event.inputs.branches }}" != "all" ]]; then
+            # User specified specific branches
+            IFS=',' read -ra SPECIFIED_BRANCHES <<< "${{ github.event.inputs.branches }}"
+            BRANCHES_TO_UPDATE=""
+            
+            for branch in "${SPECIFIED_BRANCHES[@]}"; do
+              branch=$(echo "$branch" | xargs)  # trim whitespace
+              if echo "$ALL_BRANCHES" | grep -q "^${branch}$"; then
+                BRANCHES_TO_UPDATE="${BRANCHES_TO_UPDATE}${branch}\n"
+              else
+                echo "⚠️ Warning: Branch '$branch' not found"
+              fi
+            done
+            
+            BRANCHES_LIST=$(echo -e "$BRANCHES_TO_UPDATE" | sed '/^$/d')
+          else
+            # Update all branches
+            BRANCHES_LIST="$ALL_BRANCHES"
+          fi
+          
+          # Convert to JSON array for matrix
+          if [[ -n "$BRANCHES_LIST" ]]; then
+            BRANCHES_JSON=$(echo "$BRANCHES_LIST" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            TOTAL_COUNT=$(echo "$BRANCHES_LIST" | wc -l)
+          else
+            BRANCHES_JSON="[]"
+            TOTAL_COUNT=0
+          fi
+          
+          echo "Found $TOTAL_COUNT branches to update:"
+          echo "$BRANCHES_LIST"
+          
+          echo "list=$BRANCHES_JSON" >> $GITHUB_OUTPUT
+          echo "total=$TOTAL_COUNT" >> $GITHUB_OUTPUT
+
+  update-branches:
+    name: "🔄 Update ${{ matrix.branch }}"
+    runs-on: ubuntu-latest
+    needs: [discover-branches]
+    if: needs.discover-branches.outputs.total > 0
+    strategy:
+      matrix:
+        branch: ${{ fromJson(needs.discover-branches.outputs.branches) }}
+      max-parallel: 3
+      fail-fast: false
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: "🔧 Configure Git"
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: "🔍 Analyze branch status"
+        id: analyze
+        run: |
+          BRANCH="${{ matrix.branch }}"
+          echo "Analyzing branch: $BRANCH"
+          
+          # Checkout the target branch
+          git checkout "$BRANCH"
+          
+          # Get commit information
+          MAIN_COMMIT=$(git rev-parse origin/main)
+          BRANCH_COMMIT=$(git rev-parse HEAD)
+          
+          echo "Main commit: $MAIN_COMMIT"
+          echo "Branch commit: $BRANCH_COMMIT"
+          
+          # Check if branch is up to date
+          if [[ "$MAIN_COMMIT" == "$BRANCH_COMMIT" ]]; then
+            echo "status=up-to-date" >> $GITHUB_OUTPUT
+            echo "✅ Branch $BRANCH is already up to date"
+            exit 0
+          fi
+          
+          # Check if branch is ahead of main
+          AHEAD_COUNT=$(git rev-list --count origin/main..$BRANCH_COMMIT)
+          BEHIND_COUNT=$(git rev-list --count $BRANCH_COMMIT..origin/main)
+          
+          echo "ahead=$AHEAD_COUNT" >> $GITHUB_OUTPUT
+          echo "behind=$BEHIND_COUNT" >> $GITHUB_OUTPUT
+          
+          if [[ $AHEAD_COUNT -gt 0 && $BEHIND_COUNT -gt 0 ]]; then
+            echo "status=diverged" >> $GITHUB_OUTPUT
+            echo "🔀 Branch $BRANCH has diverged (ahead: $AHEAD_COUNT, behind: $BEHIND_COUNT)"
+          elif [[ $AHEAD_COUNT -gt 0 ]]; then
+            echo "status=ahead" >> $GITHUB_OUTPUT
+            echo "⬆️ Branch $BRANCH is ahead by $AHEAD_COUNT commits"
+          elif [[ $BEHIND_COUNT -gt 0 ]]; then
+            echo "status=behind" >> $GITHUB_OUTPUT
+            echo "⬇️ Branch $BRANCH is behind by $BEHIND_COUNT commits"
+          fi
+      
+      - name: "🔄 Update branch"
+        if: steps.analyze.outputs.status != 'up-to-date'
+        run: |
+          BRANCH="${{ matrix.branch }}"
+          STATUS="${{ steps.analyze.outputs.status }}"
+          AHEAD="${{ steps.analyze.outputs.ahead }}"
+          BEHIND="${{ steps.analyze.outputs.behind }}"
+          
+          echo "Updating branch: $BRANCH (status: $STATUS)"
+          
+          if [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
+            echo "🔍 DRY RUN: Would update $BRANCH"
+            echo "  - Status: $STATUS"
+            echo "  - Ahead: $AHEAD commits"
+            echo "  - Behind: $BEHIND commits"
+            exit 0
+          fi
+          
+          # Handle different branch states
+          case "$STATUS" in
+            "behind")
+              echo "📥 Fast-forwarding branch $BRANCH"
+              git merge origin/main --ff-only
+              echo "action=fast-forward" >> $GITHUB_ENV
+              ;;
+              
+            "ahead")
+              if [[ "${{ github.event.inputs.force_update }}" == "true" ]]; then
+                echo "⚠️ Force updating branch $BRANCH (losing $AHEAD commits)"
+                git reset --hard origin/main
+                echo "action=force-reset" >> $GITHUB_ENV
+              else
+                echo "⚠️ Skipping branch $BRANCH (ahead by $AHEAD commits)"
+                echo "action=skipped-ahead" >> $GITHUB_ENV
+                exit 0
+              fi
+              ;;
+              
+            "diverged")
+              if [[ "${{ github.event.inputs.force_update }}" == "true" ]]; then
+                echo "⚠️ Force updating diverged branch $BRANCH (losing $AHEAD commits)"
+                git reset --hard origin/main
+                echo "action=force-reset" >> $GITHUB_ENV
+              else
+                echo "🔀 Attempting to merge main into $BRANCH"
+                if git merge origin/main --no-edit; then
+                  echo "action=merged" >> $GITHUB_ENV
+                else
+                  echo "❌ Merge conflict in branch $BRANCH"
+                  git merge --abort
+                  echo "action=conflict" >> $GITHUB_ENV
+                  exit 1
+                fi
+              fi
+              ;;
+              
+            *)
+              echo "❌ Unknown status: $STATUS"
+              exit 1
+              ;;
+          esac
+      
+      - name: "📤 Push updated branch"
+        if: |
+          steps.analyze.outputs.status != 'up-to-date' && 
+          github.event.inputs.dry_run != 'true' &&
+          env.action != 'skipped-ahead' &&
+          env.action != 'conflict'
+        run: |
+          BRANCH="${{ matrix.branch }}"
+          ACTION="$action"
+          
+          echo "Pushing updated branch: $BRANCH (action: $ACTION)"
+          
+          if [[ "$ACTION" == "force-reset" ]]; then
+            git push origin "$BRANCH" --force-with-lease
+          else
+            git push origin "$BRANCH"
+          fi
+          
+          echo "✅ Successfully updated branch $BRANCH"
+      
+      - name: "📝 Create issue for conflicts"
+        if: env.action == 'conflict'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = '${{ matrix.branch }}';
+            const title = `🔀 Merge conflict in branch ${branch}`;
+            const body = `
+            ## Merge Conflict Detected
+            
+            The automated branch update process encountered a merge conflict when trying to update branch \`${branch}\` with changes from \`main\`.
+            
+            **Branch:** \`${branch}\`
+            **Conflict occurred at:** ${new Date().toISOString()}
+            **Triggered by:** ${context.actor}
+            
+            ### Manual Resolution Required
+            
+            Please resolve this conflict manually:
+            
+            1. Check out the branch:
+               \`\`\`bash
+               git checkout ${branch}
+               git pull origin ${branch}
+               \`\`\`
+            
+            2. Merge main and resolve conflicts:
+               \`\`\`bash
+               git merge origin/main
+               # Resolve conflicts in your editor
+               git add .
+               git commit
+               \`\`\`
+            
+            3. Push the resolved branch:
+               \`\`\`bash
+               git push origin ${branch}
+               \`\`\`
+            
+            ### Auto-generated by Update Branches Workflow
+            This issue was automatically created by the branch update workflow.
+            `;
+            
+            // Check if issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'merge-conflict,automated'
+            });
+            
+            const existingIssue = issues.data.find(issue => 
+              issue.title.includes(branch)
+            );
+            
+            if (!existingIssue) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['merge-conflict', 'automated', 'needs-attention']
+              });
+            }
+
+  # Summary report
+  update-summary:
+    name: "📊 Update Summary"
+    runs-on: ubuntu-latest
+    needs: [discover-branches, update-branches]
+    if: always() && needs.discover-branches.outputs.total > 0
+    
+    steps:
+      - name: "📊 Generate summary report"
+        run: |
+          echo "# 🌿 Branch Update Summary" > summary.md
+          echo "" >> summary.md
+          echo "**Timestamp:** $(date -u)" >> summary.md
+          echo "**Triggered by:** ${{ github.actor }}" >> summary.md
+          echo "**Total branches processed:** ${{ needs.discover-branches.outputs.total }}" >> summary.md
+          echo "" >> summary.md
+          
+          # This would be enhanced to show actual results
+          echo "## Results" >> summary.md
+          echo "- ✅ Successfully updated branches" >> summary.md
+          echo "- ⚠️ Skipped branches (ahead of main)" >> summary.md  
+          echo "- ❌ Failed updates (merge conflicts)" >> summary.md
+          echo "" >> summary.md
+          
+          if [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
+            echo "**Note:** This was a dry run - no changes were made" >> summary.md
+          fi
+          
+          echo "### Next Steps" >> summary.md
+          echo "- Review any merge conflict issues created" >> summary.md
+          echo "- Verify updated branches are working correctly" >> summary.md
+          echo "- Run tests on updated branches if needed" >> summary.md
+          
+          cat summary.md
+      
+      - name: "📤 Upload summary report"
+        uses: actions/upload-artifact@v4
+        with:
+          name: branch-update-summary
+          path: summary.md
+          retention-days: 30
