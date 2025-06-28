@@ -138,7 +138,7 @@ spec:
         - '--web.console.libraries=/etc/prometheus/console_libraries'
         - '--web.console.templates=/etc/prometheus/consoles'
         - '--web.enable-lifecycle'
-        - '--web.enable-admin-api'
+        - '--web.enable-admin-api' # consider disabling for security - may need alternatitve solution if admin is needed or security hardening for it
         - '--web.external-url=http://prometheus.monitoring.svc.cluster.local:9090'
         - '--web.route-prefix=/'
         - '--log.level=info'
