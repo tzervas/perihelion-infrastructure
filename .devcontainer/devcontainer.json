@@ -1,0 +1,139 @@
+{
+  "name": "GitLab Infrastructure DevContainer",
+  "dockerFile": "Dockerfile",
+  "context": "..",
+  
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "configureZshAsDefaultShell": true,
+      "installOhMyZsh": true,
+      "upgradePackages": true,
+      "username": "developer",
+      "userUid": 1000,
+      "userGid": 1000
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12",
+      "installTools": true,
+      "toolsToInstall": "pip,setuptools,wheel,build,twine,black,mypy,flake8,pytest,bandit,safety"
+    },
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+      "version": "24.0",
+      "enableNonRootDocker": true,
+      "moby": false
+    },
+    "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
+      "version": "latest",
+      "helm": "latest",
+      "minikube": "none"
+    },
+    "ghcr.io/devcontainers/features/terraform:1": {
+      "version": "latest",
+      "tflint": true,
+      "terragrunt": true
+    },
+    "ghcr.io/devcontainers/features/git:1": {
+      "version": "latest",
+      "ppa": true
+    }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.black-formatter",
+        "ms-python.mypy-type-checker",
+        "ms-python.bandit",
+        "ms-kubernetes-tools.vscode-kubernetes-tools",
+        "HashiCorp.terraform",
+        "ms-vscode.docker",
+        "GitHub.copilot",
+        "sourcery.sourcery",
+        "ms-vscode.vscode-json",
+        "redhat.vscode-yaml",
+        "ms-vscode.markdown-preview-enhanced"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.formatting.provider": "black",
+        "python.linting.enabled": true,
+        "python.linting.pylintEnabled": false,
+        "python.linting.flake8Enabled": true,
+        "python.linting.banditEnabled": true,
+        "python.linting.mypyEnabled": true,
+        "python.testing.pytestEnabled": true,
+        "python.testing.unittestEnabled": false,
+        "python.analysis.typeCheckingMode": "strict",
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true,
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.organizeImports": true
+        },
+        "security.workspace.trust.untrustedFiles": "prompt"
+      }
+    }
+  },
+
+  "postCreateCommand": [
+    "bash",
+    "-c",
+    "curl -LsSf https://astral.sh/uv/install.sh | sh && source ~/.bashrc && uv venv && source .venv/bin/activate && uv pip install -r requirements-dev.txt && pre-commit install"
+  ],
+
+  "forwardPorts": [
+    8080,
+    9090,
+    3000,
+    6443
+  ],
+
+  "portsAttributes": {
+    "8080": {
+      "label": "GitLab Web UI",
+      "onAutoForward": "notify"
+    },
+    "9090": {
+      "label": "Prometheus",
+      "onAutoForward": "silent"
+    },
+    "3000": {
+      "label": "Grafana",
+      "onAutoForward": "silent"
+    },
+    "6443": {
+      "label": "Kubernetes API",
+      "onAutoForward": "silent"
+    }
+  },
+
+  "mounts": [
+    "source=${localWorkspaceFolder}/.kube,target=/home/developer/.kube,type=bind,consistency=cached",
+    "source=${localWorkspaceFolder}/.gnupg,target=/home/developer/.gnupg,type=bind,consistency=cached"
+  ],
+
+  "remoteEnv": {
+    "PYTHONPATH": "${containerWorkspaceFolder}/src",
+    "KUBECONFIG": "/home/developer/.kube/config",
+    "HELM_CACHE_HOME": "/home/developer/.cache/helm",
+    "HELM_CONFIG_HOME": "/home/developer/.config/helm",
+    "TERRAFORM_LOG": "WARN"
+  },
+
+  "remoteUser": "developer",
+  
+  "runArgs": [
+    "--cap-drop=ALL",
+    "--cap-add=NET_ADMIN",
+    "--security-opt=no-new-privileges:true",
+    "--read-only",
+    "--tmpfs=/tmp:rw,noexec,nosuid,size=100m",
+    "--tmpfs=/var/tmp:rw,noexec,nosuid,size=100m"
+  ],
+
+  "initializeCommand": "docker system prune -f",
+  
+  "shutdownAction": "stopContainer"
+}

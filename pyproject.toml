@@ -1,0 +1,212 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gitlab-runner-controller"
+version = "0.1.0"
+authors = [
+    {name = "Tyler Zervas", email = "tyler@example.com"},
+]
+description = "Secure GitLab runner controller for Kubernetes"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+]
+keywords = ["gitlab", "kubernetes", "ci-cd", "runners", "security"]
+dependencies = [
+    "kubernetes>=29.0.0",
+    "pyyaml>=6.0.1",
+    "pydantic>=2.6.4",
+    "pydantic-settings>=2.2.1",
+    "httpx>=0.27.0",
+    "aiohttp>=3.9.3",
+    "structlog>=24.1.0",
+    "prometheus-client>=0.20.0",
+    "cryptography>=42.0.5",
+    "jinja2>=3.1.3",
+    "typer>=0.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black>=24.3.0",
+    "mypy>=1.9.0",
+    "flake8>=7.0.0",
+    "bandit>=1.7.8",
+    "safety>=3.1.0",
+    "semgrep>=1.66.2",
+    "pre-commit>=3.7.0",
+    "pytest>=8.1.1",
+    "pytest-cov>=5.0.0",
+    "pytest-asyncio>=0.23.6",
+    "pytest-mock>=3.12.0",
+    "pytest-xdist>=3.5.0",
+    "ipython>=8.22.2",
+    "rich>=13.7.1",
+]
+docs = [
+    "mkdocs>=1.5.3",
+    "mkdocs-material>=9.5.13",
+    "mkdocs-mermaid2-plugin>=1.1.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/tzervas/private-homelab"
+Documentation = "https://github.com/tzervas/private-homelab/docs"
+Repository = "https://github.com/tzervas/private-homelab.git"
+"Bug Tracker" = "https://github.com/tzervas/private-homelab/issues"
+Changelog = "https://github.com/tzervas/private-homelab/blob/main/CHANGELOG.md"
+
+[project.scripts]
+gitlab-runner-controller = "gitlab_runner_controller.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+gitlab_runner_controller = ["templates/*.yaml", "config/*.yaml"]
+
+# Black configuration
+[tool.black]
+line-length = 88
+target-version = ['py312']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+# isort configuration
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["gitlab_runner_controller"]
+known_third_party = ["kubernetes", "pydantic", "structlog"]
+
+# mypy configuration
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+implicit_reexport = false
+strict_equality = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = [
+    "kubernetes.*",
+    "prometheus_client.*",
+]
+ignore_missing_imports = true
+
+# pytest configuration
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --strict-markers --cov=src --cov-report=term-missing --cov-report=html --cov-report=xml"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "security: marks tests as security tests",
+]
+
+# coverage configuration
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/site-packages/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+# bandit configuration
+[tool.bandit]
+exclude_dirs = ["tests", "build", "dist"]
+tests = ["B201", "B301", "B401", "B501", "B601", "B602", "B605", "B607"]
+skips = ["B101", "B601"]  # Skip assert_used and shell_injection for tests
+
+[tool.bandit.any_other_function_with_shell_equals_true]
+no_shell = [
+    "os.execl",
+    "os.execle",
+    "os.execlp",
+    "os.execlpe",
+    "os.execv",
+    "os.execve",
+    "os.execvp",
+    "os.execvpe",
+    "os.spawnl",
+    "os.spawnle",
+]
+shell = [
+    "os.system",
+    "os.popen",
+    "os.popen2",
+    "os.popen3",
+    "os.popen4",
+    "popen2.popen2",
+    "popen2.popen3",
+    "popen2.popen4",
+    "popen2.Popen3",
+    "popen2.Popen4",
+    "commands.getoutput",
+    "commands.getstatusoutput",
+]
+subprocess = [
+    "subprocess.Popen",
+    "subprocess.call",
+    "subprocess.check_call",
+    "subprocess.check_output",
+    "subprocess.run",
+]

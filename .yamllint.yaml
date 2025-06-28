@@ -1,0 +1,51 @@
+extends: default
+
+rules:
+  # Line length configuration
+  line-length:
+    max: 120
+    level: warning
+
+  # Indentation configuration
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+
+  # Comments configuration
+  comments:
+    min-spaces-from-content: 1
+
+  # Document start configuration
+  document-start:
+    present: false
+
+  # Truthy configuration for Kubernetes compatibility
+  truthy:
+    allowed-values: ['true', 'false', 'on', 'off', 'yes', 'no']
+    check-keys: false
+
+  # Brackets configuration
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+
+  # Braces configuration
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+
+  # Octal values (for file permissions)
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: false
+
+# Ignore certain files
+ignore: |
+  .git/
+  .venv/
+  node_modules/
+  *.encrypted
+  charts/*/templates/
+  **/templates/*.yaml
+  **/templates/*.yml
