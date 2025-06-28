@@ -112,8 +112,8 @@ data:
     [FILTER]
         Name                grep
         Match               kube.*
-        Exclude             log ERROR.*
-        Exclude             log WARN.*
+        # Exclude             log ERROR.*
+        # Exclude             log WARN.*
     
     [FILTER]
         Name                record_modifier
