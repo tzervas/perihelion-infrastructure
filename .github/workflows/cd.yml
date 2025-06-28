@@ -1,0 +1,512 @@
+name: "🚀 Continuous Deployment"
+
+on:
+  push:
+    branches: ["main"]
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - "LICENSE"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deployment environment"
+        required: true
+        type: choice
+        options:
+          - "staging"
+          - "production"
+        default: "staging"
+      skip_tests:
+        description: "Skip pre-deployment tests"
+        required: false
+        default: false
+        type: boolean
+      force_deploy:
+        description: "Force deployment (skip safety checks)"
+        required: false
+        default: false
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/gitlab-runner-controller
+  KUBECTL_VERSION: "v1.29.0"
+  HELM_VERSION: "v3.14.0"
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Pre-deployment validation
+  pre-deployment:
+    name: "🔍 Pre-deployment Validation"
+    runs-on: ubuntu-latest
+    if: github.event.inputs.skip_tests != 'true'
+    permissions:
+      contents: read
+      packages: read
+    
+    outputs:
+      image-tag: ${{ steps.image.outputs.tag }}
+      deployment-ready: ${{ steps.validation.outputs.ready }}
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+      
+      - name: "🏷️ Determine image tag"
+        id: image
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: "🔐 Log in to GitHub Container Registry"
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: "🔍 Verify container image exists"
+        run: |
+          IMAGE_TAG="${{ steps.image.outputs.tag }}"
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
+          
+          # Scan the image for critical vulnerabilities
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image \
+            --exit-code 1 \
+            --severity CRITICAL \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
+      
+      - name: "🔧 Set up kubectl"
+        uses: azure/setup-kubectl@v3
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+      
+      - name: "🔧 Set up Helm"
+        uses: azure/setup-helm@v3
+        with:
+          version: ${{ env.HELM_VERSION }}
+      
+      - name: "✅ Validate deployment readiness"
+        id: validation
+        run: |
+          # Validate Helm chart
+          helm lint helm/gitlab-runner-controller/
+          
+          # Check if all required secrets are available
+          REQUIRED_SECRETS=(
+            "KUBE_CONFIG_STAGING"
+            "KUBE_CONFIG_PRODUCTION"
+            "GITLAB_TOKEN"
+            "VAULT_TOKEN"
+          )
+          
+          for secret in "${REQUIRED_SECRETS[@]}"; do
+            if [[ -z "${!secret}" ]]; then
+              echo "❌ Required secret $secret not found"
+              echo "ready=false" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+          done
+          
+          echo "ready=true" >> $GITHUB_OUTPUT
+          echo "✅ Pre-deployment validation passed"
+
+  # Staging deployment
+  deploy-staging:
+    name: "🎭 Deploy to Staging"
+    runs-on: ubuntu-latest
+    needs: [pre-deployment]
+    if: always() && (needs.pre-deployment.outputs.deployment-ready == 'true' || github.event.inputs.force_deploy == 'true')
+    environment:
+      name: staging
+      url: https://gitlab-staging.example.com
+    permissions:
+      contents: read
+      packages: read
+      deployments: write
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+      
+      - name: "🔧 Set up kubectl"
+        uses: azure/setup-kubectl@v3
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+      
+      - name: "🔧 Set up Helm"
+        uses: azure/setup-helm@v3
+        with:
+          version: ${{ env.HELM_VERSION }}
+      
+      - name: "⚙️ Configure kubectl for staging"
+        run: |
+          echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > /tmp/kubeconfig
+          export KUBECONFIG=/tmp/kubeconfig
+          kubectl cluster-info
+      
+      - name: "🔍 Pre-deployment health check"
+        run: |
+          export KUBECONFIG=/tmp/kubeconfig
+          
+          # Check cluster health
+          kubectl get nodes
+          
+          # Check if namespace exists
+          kubectl get namespace gitlab-runner-system || true
+          kubectl get namespace gitlab-runners || true
+      
+      - name: "🚀 Deploy to staging with Helm"
+        run: |
+          export KUBECONFIG=/tmp/kubeconfig
+          
+          # Create namespaces if they don't exist
+          kubectl apply -f k8s/namespaces/
+          
+          # Deploy with Helm
+          helm upgrade --install gitlab-runner-controller \
+            helm/gitlab-runner-controller/ \
+            --namespace gitlab-runner-system \
+            --values helm/gitlab-runner-controller/values.yaml \
+            --set image.tag=${{ needs.pre-deployment.outputs.image-tag }} \
+            --set config.gitlab.token="${{ secrets.GITLAB_TOKEN }}" \
+            --set config.gitlab.url="https://gitlab-staging.example.com" \
+            --set secrets.vaultToken="${{ secrets.VAULT_TOKEN }}" \
+            --set controller.replicaCount=1 \
+            --wait \
+            --timeout=10m
+      
+      - name: "🔍 Post-deployment verification"
+        run: |
+          export KUBECONFIG=/tmp/kubeconfig
+          
+          # Wait for deployment to be ready
+          kubectl wait --for=condition=available \
+            --timeout=300s \
+            deployment/gitlab-runner-controller \
+            -n gitlab-runner-system
+          
+          # Check pod status
+          kubectl get pods -n gitlab-runner-system -l app.kubernetes.io/name=gitlab-runner-controller
+          
+          # Check service endpoints
+          kubectl get svc -n gitlab-runner-system
+          
+          # Verify health endpoints
+          POD_NAME=$(kubectl get pods -n gitlab-runner-system \
+            -l app.kubernetes.io/name=gitlab-runner-controller \
+            -o jsonpath="{.items[0].metadata.name}")
+          
+          kubectl port-forward -n gitlab-runner-system pod/$POD_NAME 8081:8081 &
+          sleep 5
+          curl -f http://localhost:8081/health || exit 1
+          kill %1
+      
+      - name: "📊 Generate deployment report"
+        run: |
+          export KUBECONFIG=/tmp/kubeconfig
+          
+          echo "## 🎭 Staging Deployment Report" > deployment-report.md
+          echo "**Timestamp:** $(date -u)" >> deployment-report.md
+          echo "**Image:** ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.pre-deployment.outputs.image-tag }}" >> deployment-report.md
+          echo "**Commit:** ${{ github.sha }}" >> deployment-report.md
+          echo "" >> deployment-report.md
+          
+          echo "### Pod Status" >> deployment-report.md
+          kubectl get pods -n gitlab-runner-system -o wide >> deployment-report.md
+          
+          echo "### Service Status" >> deployment-report.md  
+          kubectl get svc -n gitlab-runner-system >> deployment-report.md
+      
+      - name: "📤 Upload deployment report"
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-deployment-report
+          path: deployment-report.md
+          retention-days: 30
+
+  # Production deployment (requires manual approval)
+  deploy-production:
+    name: "🏭 Deploy to Production"
+    runs-on: ubuntu-latest
+    needs: [pre-deployment, deploy-staging]
+    if: |
+      always() && 
+      (needs.deploy-staging.result == 'success' || github.event.inputs.environment == 'production') &&
+      (needs.pre-deployment.outputs.deployment-ready == 'true' || github.event.inputs.force_deploy == 'true')
+    environment:
+      name: production
+      url: https://gitlab.example.com
+    permissions:
+      contents: read
+      packages: read
+      deployments: write
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+      
+      - name: "🔧 Set up kubectl"
+        uses: azure/setup-kubectl@v3
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+      
+      - name: "🔧 Set up Helm"
+        uses: azure/setup-helm@v3
+        with:
+          version: ${{ env.HELM_VERSION }}
+      
+      - name: "⚙️ Configure kubectl for production"
+        run: |
+          echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > /tmp/kubeconfig
+          export KUBECONFIG=/tmp/kubeconfig
+          kubectl cluster-info
+      
+      - name: "🔍 Production readiness check"
+        run: |
+          export KUBECONFIG=/tmp/kubeconfig
+          
+          # Comprehensive cluster health check
+          kubectl get nodes
+          kubectl top nodes || true
+          
+          # Check resource availability
+          kubectl describe quota -n gitlab-runner-system || true
+          kubectl describe limitrange -n gitlab-runner-system || true
+          
+          # Verify security policies
+          kubectl get networkpolicies -n gitlab-runner-system
+          kubectl get podsecuritypolicy || true
+      
+      - name: "💾 Backup current deployment"
+        run: |
+          export KUBECONFIG=/tmp/kubeconfig
+          
+          # Create backup of current deployment
+          mkdir -p backup/
+          
+          helm get values gitlab-runner-controller \
+            -n gitlab-runner-system > backup/helm-values.yaml || true
+          
+          kubectl get all -n gitlab-runner-system \
+            -o yaml > backup/k8s-resources.yaml || true
+      
+      - name: "🚀 Deploy to production with Helm"
+        run: |
+          export KUBECONFIG=/tmp/kubeconfig
+          
+          # Apply security policies first
+          kubectl apply -f k8s/security/ || true
+          
+          # Create namespaces
+          kubectl apply -f k8s/namespaces/
+          
+          # Deploy with production configuration
+          helm upgrade --install gitlab-runner-controller \
+            helm/gitlab-runner-controller/ \
+            --namespace gitlab-runner-system \
+            --values helm/gitlab-runner-controller/values.yaml \
+            --set image.tag=${{ needs.pre-deployment.outputs.image-tag }} \
+            --set config.gitlab.token="${{ secrets.GITLAB_TOKEN }}" \
+            --set config.gitlab.url="https://gitlab.example.com" \
+            --set secrets.vaultToken="${{ secrets.VAULT_TOKEN }}" \
+            --set controller.replicaCount=2 \
+            --set controller.resources.requests.cpu=200m \
+            --set controller.resources.requests.memory=256Mi \
+            --set controller.resources.limits.cpu=1000m \
+            --set controller.resources.limits.memory=1Gi \
+            --set monitoring.enabled=true \
+            --set serviceMonitor.enabled=true \
+            --wait \
+            --timeout=15m
+      
+      - name: "🔍 Production deployment verification"
+        run: |
+          export KUBECONFIG=/tmp/kubeconfig
+          
+          # Wait for all replicas to be ready
+          kubectl wait --for=condition=available \
+            --timeout=600s \
+            deployment/gitlab-runner-controller \
+            -n gitlab-runner-system
+          
+          # Verify all pods are running
+          kubectl get pods -n gitlab-runner-system \
+            -l app.kubernetes.io/name=gitlab-runner-controller
+          
+          # Check that we have the expected number of replicas
+          READY_REPLICAS=$(kubectl get deployment gitlab-runner-controller \
+            -n gitlab-runner-system \
+            -o jsonpath='{.status.readyReplicas}')
+          
+          if [[ "$READY_REPLICAS" -lt "2" ]]; then
+            echo "❌ Expected 2 replicas, but only $READY_REPLICAS are ready"
+            exit 1
+          fi
+          
+          # Verify health endpoints on all pods
+          PODS=$(kubectl get pods -n gitlab-runner-system \
+            -l app.kubernetes.io/name=gitlab-runner-controller \
+            -o jsonpath='{.items[*].metadata.name}')
+          
+          for pod in $PODS; do
+            echo "Checking health for pod: $pod"
+            kubectl port-forward -n gitlab-runner-system pod/$pod 8081:8081 &
+            PF_PID=$!
+            sleep 5
+            curl -f http://localhost:8081/health || exit 1
+            kill $PF_PID
+          done
+      
+      - name: "📊 Generate production deployment report"
+        run: |
+          export KUBECONFIG=/tmp/kubeconfig
+          
+          echo "## 🏭 Production Deployment Report" > production-deployment-report.md
+          echo "**Timestamp:** $(date -u)" >> production-deployment-report.md
+          echo "**Image:** ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.pre-deployment.outputs.image-tag }}" >> production-deployment-report.md
+          echo "**Commit:** ${{ github.sha }}" >> production-deployment-report.md
+          echo "**Deployed by:** ${{ github.actor }}" >> production-deployment-report.md
+          echo "" >> production-deployment-report.md
+          
+          echo "### Deployment Status" >> production-deployment-report.md
+          kubectl get deployment gitlab-runner-controller -n gitlab-runner-system -o wide >> production-deployment-report.md
+          
+          echo "### Pod Status" >> production-deployment-report.md
+          kubectl get pods -n gitlab-runner-system -o wide >> production-deployment-report.md
+          
+          echo "### Service Status" >> production-deployment-report.md
+          kubectl get svc -n gitlab-runner-system >> production-deployment-report.md
+          
+          echo "### Resource Usage" >> production-deployment-report.md
+          kubectl top pods -n gitlab-runner-system || echo "Metrics server not available" >> production-deployment-report.md
+      
+      - name: "📤 Upload production deployment report"
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-deployment-report
+          path: production-deployment-report.md
+          retention-days: 90
+
+  # Post-deployment monitoring and alerts
+  post-deployment:
+    name: "📊 Post-deployment Monitoring"
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: always() && needs.deploy-production.result == 'success'
+    permissions:
+      contents: read
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+      
+      - name: "🔧 Set up kubectl"
+        uses: azure/setup-kubectl@v3
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+      
+      - name: "⚙️ Configure kubectl"
+        run: |
+          echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > /tmp/kubeconfig
+          export KUBECONFIG=/tmp/kubeconfig
+      
+      - name: "📊 Monitor deployment health"
+        run: |
+          export KUBECONFIG=/tmp/kubeconfig
+          
+          echo "🕐 Monitoring deployment for 5 minutes..."
+          
+          for i in {1..10}; do
+            echo "Check $i/10 - $(date)"
+            
+            # Check pod health
+            kubectl get pods -n gitlab-runner-system \
+              -l app.kubernetes.io/name=gitlab-runner-controller
+            
+            # Check service endpoints
+            kubectl get endpoints -n gitlab-runner-system
+            
+            # Wait 30 seconds
+            sleep 30
+          done
+          
+          echo "✅ Post-deployment monitoring complete"
+      
+      - name: "🚨 Configure alerts"
+        run: |
+          echo "Setting up monitoring alerts for the deployment..."
+          # This would typically integrate with your monitoring system
+          # For now, we'll just create alert configuration
+          
+          cat > alerts.yaml << EOF
+          alerts:
+            - name: gitlab-runner-controller-down
+              condition: absent(up{job="gitlab-runner-controller"})
+              for: 5m
+              severity: critical
+            - name: gitlab-runner-controller-high-memory
+              condition: container_memory_usage_bytes{pod=~"gitlab-runner-controller.*"} > 500000000
+              for: 10m
+              severity: warning
+          EOF
+          
+          echo "Alert configuration created"
+
+  # Rollback capability
+  rollback:
+    name: "🔄 Rollback Deployment"
+    runs-on: ubuntu-latest
+    if: failure() && github.event_name == 'workflow_dispatch'
+    environment:
+      name: production
+    permissions:
+      contents: read
+      deployments: write
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+      
+      - name: "🔧 Set up Helm"
+        uses: azure/setup-helm@v3
+        with:
+          version: ${{ env.HELM_VERSION }}
+      
+      - name: "⚙️ Configure kubectl"
+        run: |
+          echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > /tmp/kubeconfig
+          export KUBECONFIG=/tmp/kubeconfig
+      
+      - name: "🔄 Rollback to previous version"
+        run: |
+          export KUBECONFIG=/tmp/kubeconfig
+          
+          echo "🔄 Rolling back gitlab-runner-controller deployment..."
+          
+          helm rollback gitlab-runner-controller \
+            -n gitlab-runner-system \
+            --wait \
+            --timeout=10m
+          
+          echo "✅ Rollback completed"
+      
+      - name: "🔍 Verify rollback"
+        run: |
+          export KUBECONFIG=/tmp/kubeconfig
+          
+          kubectl wait --for=condition=available \
+            --timeout=300s \
+            deployment/gitlab-runner-controller \
+            -n gitlab-runner-system
+          
+          kubectl get pods -n gitlab-runner-system \
+            -l app.kubernetes.io/name=gitlab-runner-controller

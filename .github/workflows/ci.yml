@@ -1,0 +1,440 @@
+name: "🔄 Continuous Integration"
+
+on:
+  push:
+    branches: ["main", "develop"]
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - "LICENSE"
+  pull_request:
+    branches: ["main", "develop"]
+    paths-ignore:
+      - "docs/**"
+      - "*.md" 
+      - "LICENSE"
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: "Skip test execution"
+        required: false
+        default: false
+        type: boolean
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.4.18"
+  DOCKER_BUILDKIT: 1
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Security and vulnerability scanning
+  security-scan:
+    name: "🔒 Security Scan"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: "🔍 Run Trivy vulnerability scanner"
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH,MEDIUM"
+      
+      - name: "📤 Upload Trivy scan results to GitHub Security"
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: "trivy-results.sarif"
+      
+      - name: "🔐 Run Bandit security linter"
+        run: |
+          pip install bandit[toml]
+          bandit -r src/ -f json -o bandit-results.json || true
+          bandit -r src/ -f txt
+      
+      - name: "🗝️ Secret scanning with GitGuardian"
+        uses: GitGuardian/ggshield-action@v1
+        env:
+          GITHUB_PUSH_BEFORE_SHA: ${{ github.event.before }}
+          GITHUB_PUSH_BASE_SHA: ${{ github.event.base }}
+          GITHUB_PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+      
+      - name: "📊 Upload security scan artifacts"
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-scan-results
+          path: |
+            trivy-results.sarif
+            bandit-results.json
+          retention-days: 30
+
+  # Code quality and linting
+  code-quality:
+    name: "✨ Code Quality"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+      
+      - name: "🐍 Set up Python ${{ env.PYTHON_VERSION }}"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: "⚡ Install UV package manager"
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      
+      - name: "📦 Install dependencies"
+        run: |
+          uv venv
+          source .venv/bin/activate
+          uv pip install -r requirements-dev.txt
+      
+      - name: "🔍 Run Black code formatter check"
+        run: |
+          source .venv/bin/activate
+          black --check --diff src/ tests/
+      
+      - name: "📏 Run isort import sorting check"
+        run: |
+          source .venv/bin/activate
+          isort --check-only --diff src/ tests/
+      
+      - name: "🧹 Run flake8 linting"
+        run: |
+          source .venv/bin/activate
+          flake8 src/ tests/ --format=github
+      
+      - name: "🔒 Run mypy type checking"
+        run: |
+          source .venv/bin/activate
+          mypy src/ --show-error-codes --show-error-context
+      
+      - name: "🔧 Run pylint static analysis"
+        run: |
+          source .venv/bin/activate
+          pylint src/ --output-format=github || true
+
+  # Comprehensive testing suite
+  test:
+    name: "🧪 Test Suite"
+    runs-on: ubuntu-latest
+    if: github.event.inputs.skip_tests != 'true'
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+      fail-fast: false
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+      
+      - name: "🐍 Set up Python ${{ matrix.python-version }}"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      
+      - name: "⚡ Install UV package manager"
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      
+      - name: "📦 Install dependencies"
+        run: |
+          uv venv
+          source .venv/bin/activate
+          uv pip install -r requirements-dev.txt
+      
+      - name: "🧪 Run unit tests with coverage"
+        run: |
+          source .venv/bin/activate
+          pytest tests/ \
+            --cov=src \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-report=term \
+            --junit-xml=pytest-results.xml \
+            -v
+      
+      - name: "📊 Upload coverage to Codecov"
+        uses: codecov/codecov-action@v4
+        if: matrix.python-version == '3.12'
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+      
+      - name: "📈 Upload test results"
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.python-version }}
+          path: |
+            pytest-results.xml
+            htmlcov/
+            coverage.xml
+          retention-days: 30
+
+  # Docker image building and scanning
+  docker-build:
+    name: "🐳 Docker Build & Scan"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      packages: write
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+      
+      - name: "🔧 Set up Docker Buildx"
+        uses: docker/setup-buildx-action@v3
+      
+      - name: "🏷️ Extract metadata"
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}/gitlab-runner-controller
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+      
+      - name: "🔐 Log in to GitHub Container Registry"
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: "🔨 Build Docker image"
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+            PYTHON_VERSION=${{ env.PYTHON_VERSION }}
+      
+      - name: "🔍 Run Trivy vulnerability scanner on image"
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ github.repository }}/gitlab-runner-controller:${{ github.sha }}
+          format: "sarif"
+          output: "trivy-image-results.sarif"
+          severity: "CRITICAL,HIGH"
+      
+      - name: "📤 Upload Trivy image scan results"
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: "trivy-image-results.sarif"
+
+  # Kubernetes manifest validation
+  k8s-validation:
+    name: "☸️ Kubernetes Validation"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+      
+      - name: "🔧 Set up kubectl"
+        uses: azure/setup-kubectl@v3
+        with:
+          version: "v1.29.0"
+      
+      - name: "🔧 Set up Helm"
+        uses: azure/setup-helm@v3
+        with:
+          version: "v3.14.0"
+      
+      - name: "🔍 Validate Kubernetes manifests"
+        run: |
+          # Validate raw YAML manifests
+          find k8s/ -name "*.yaml" -type f | while read -r file; do
+            echo "Validating $file"
+            kubectl apply --dry-run=client --validate=true -f "$file" || exit 1
+          done
+      
+      - name: "📦 Validate Helm chart"
+        run: |
+          helm lint helm/gitlab-runner-controller/
+          helm template gitlab-runner-controller helm/gitlab-runner-controller/ \
+            --values helm/gitlab-runner-controller/values.yaml \
+            --validate
+      
+      - name: "🔐 Validate security policies"
+        run: |
+          # Check for restricted Pod Security Standards
+          grep -r "pod-security.kubernetes.io/enforce: restricted" k8s/ || {
+            echo "Error: Restricted Pod Security Standards not found"
+            exit 1
+          }
+          
+          # Validate network policies
+          find k8s/security/ -name "*network-policies*" -type f | while read -r file; do
+            if ! grep -q "policyTypes:" "$file"; then
+              echo "Error: Network policy missing policyTypes in $file"
+              exit 1
+            fi
+          done
+
+  # Infrastructure as Code validation
+  iac-validation:
+    name: "🏗️ Infrastructure Validation"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+      
+      - name: "🔧 Set up Kustomize"
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+      
+      - name: "🔍 Validate Kustomization"
+        run: |
+          cd k8s/
+          kustomize build . > /tmp/kustomized-manifests.yaml
+          
+          # Validate the built manifests
+          kubectl apply --dry-run=client --validate=true -f /tmp/kustomized-manifests.yaml
+      
+      - name: "🛡️ Security policy validation"
+        run: |
+          # Ensure all deployments have security contexts
+          if ! grep -q "securityContext:" k8s/manifests/deployment.yaml; then
+            echo "Error: Deployment missing security context"
+            exit 1
+          fi
+          
+          # Validate resource limits are set
+          if ! grep -q "limits:" k8s/manifests/deployment.yaml; then
+            echo "Error: Deployment missing resource limits"
+            exit 1
+          fi
+
+  # Sourcery AI code review (simulated)
+  sourcery-ai:
+    name: "🤖 Sourcery AI Review"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: "🤖 Simulate Sourcery AI Analysis"
+        run: |
+          # This simulates what Sourcery AI would do
+          echo "🔍 Analyzing code quality and security patterns..."
+          
+          # Check for common security anti-patterns
+          if grep -r "shell=True" src/; then
+            echo "⚠️ WARNING: Found shell=True usage - potential security risk"
+          fi
+          
+          if grep -r "eval\|exec" src/; then
+            echo "⚠️ WARNING: Found eval/exec usage - potential security risk"  
+          fi
+          
+          # Check for hardcoded secrets patterns
+          if grep -rE "(password|secret|key|token)\s*=\s*['\"][^'\"]*['\"]" src/; then
+            echo "⚠️ WARNING: Potential hardcoded secrets found"
+          fi
+          
+          echo "✅ Sourcery AI analysis complete"
+      
+      - name: "💬 Comment on PR"
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo, number } = context.issue;
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: number,
+              body: '🤖 **Sourcery AI Review Complete**\n\nCode analysis finished. Check the logs for any recommendations or security findings.'
+            });
+
+  # Final CI status check
+  ci-status:
+    name: "✅ CI Status Check"
+    runs-on: ubuntu-latest
+    needs: [security-scan, code-quality, test, docker-build, k8s-validation, iac-validation]
+    if: always()
+    permissions:
+      contents: read
+    
+    steps:
+      - name: "📊 Check CI results"
+        run: |
+          echo "Security Scan: ${{ needs.security-scan.result }}"
+          echo "Code Quality: ${{ needs.code-quality.result }}"
+          echo "Test Suite: ${{ needs.test.result }}"
+          echo "Docker Build: ${{ needs.docker-build.result }}"
+          echo "K8s Validation: ${{ needs.k8s-validation.result }}"
+          echo "IaC Validation: ${{ needs.iac-validation.result }}"
+          
+          # Fail if any critical jobs failed
+          if [[ "${{ needs.security-scan.result }}" == "failure" ]] || 
+             [[ "${{ needs.code-quality.result }}" == "failure" ]] || 
+             [[ "${{ needs.test.result }}" == "failure" ]] ||
+             [[ "${{ needs.k8s-validation.result }}" == "failure" ]] ||
+             [[ "${{ needs.iac-validation.result }}" == "failure" ]]; then
+            echo "❌ CI pipeline failed - critical jobs unsuccessful"
+            exit 1
+          fi
+          
+          echo "✅ All CI checks passed successfully!"
