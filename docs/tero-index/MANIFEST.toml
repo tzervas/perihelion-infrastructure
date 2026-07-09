@@ -4,12 +4,12 @@
 [index]
 schema = "tero-layer1-v1"
 repo = "perihelion-infrastructure"
-generated_at = "2026-07-09T01:31:52Z"
-item_count = 305
-source_files = 9
+generated_at = "2026-07-09T23:48:46Z"
+item_count = 311
+source_files = 10
 generator = "tero-mcp/scripts/generate_lite_index.py"
 honesty = "Empirical/Declared — markdown heading heuristic; source is ground truth"
-command = "python3 /path/to/tero-mcp/scripts/generate_lite_index.py --root /root/git/perihelion-infrastructure"
+command = "python3 /path/to/tero-mcp/scripts/generate_lite_index.py --root /root/git/workspace/perihelion-infrastructure"
 
 [outputs]
 index_json = "docs/tero-index/index.json"
