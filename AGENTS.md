@@ -51,3 +51,8 @@ Run checks before considering work complete.
 
 Leave mycelium isolated; all coordination here targets the other repos + cabal.
 
+## Hygiene + thin land (2026-07-09, plan priority 1)
+Added `scripts/check.sh` (requirements + pyproject aware via uv/venv/pip, pytest incl security/, advisory black/isort/flake, tero regen modeled on cabal-devmelopner/scripts/check.sh + search-box) and `docs/ROADMAP.md` (minimal living, north star for py infra platform, hygiene/tero, links + waves). Appended here. Tero-first via /root/git/scripts/tero.sh + MCP. Chore branch per branch-guard/dev-workflow; land via dev --no-ff, main --no-ff, push, propagate per plan. Post: update-tero + `./scripts/check.sh` verify. 
+Cites: plan.md:90 (thin repos hygiene/landing + perihelion-infrastructure), WORKSPACE_CABAL_TERO_READINESS.md (hygiene tranche, branch), wsfull-wave-2026-07-09-compact.md, perihelion tero index pre/post. 
+Run: `./scripts/check.sh` ; `/root/git/scripts/update-tero.sh perihelion-infrastructure` ; tero queries. Make targets remain canonical for full.
+
