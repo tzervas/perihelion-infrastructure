@@ -64,6 +64,16 @@
       "summary": "- README.md"
     },
     {
+      "anchor": "agents--hygiene-thin-land-2026-07-09-plan-priority-1",
+      "family": "doc",
+      "kind": "section",
+      "title": "Hygiene + thin land (2026-07-09, plan priority 1)",
+      "file": "AGENTS.md",
+      "line": 54,
+      "tag": "Empirical/Declared",
+      "summary": "Added scripts/check.sh (requirements + pyproject aware via uv/venv/pip, pytest incl security/, advisory black/isort/flake, tero regen modeled on cabal-devmelop…"
+    },
+    {
       "anchor": "contributing",
       "family": "doc",
       "kind": "section",
@@ -1569,6 +1579,57 @@
       "line": 387,
       "tag": "Empirical/Declared",
       "summary": "For questions about this security policy:"
+    },
+    {
+      "anchor": "roadmap",
+      "family": "doc",
+      "kind": "note",
+      "title": "perihelion-infrastructure — Roadmap",
+      "file": "docs/ROADMAP.md",
+      "line": 1,
+      "tag": "Empirical/Declared",
+      "status": "Living (2026-07-09)",
+      "summary": "Status: Living (2026-07-09)"
+    },
+    {
+      "anchor": "roadmap--current-state-per-readme-tero",
+      "family": "doc",
+      "kind": "section",
+      "title": "Current State (per README + tero)",
+      "file": "docs/ROADMAP.md",
+      "line": 10,
+      "tag": "Empirical/Declared",
+      "summary": "- GitLab Runner Controller (src/gitlabrunnercontroller/): auto-scaling, hardened"
+    },
+    {
+      "anchor": "roadmap--hygiene-tero",
+      "family": "doc",
+      "kind": "section",
+      "title": "Hygiene + Tero",
+      "file": "docs/ROADMAP.md",
+      "line": 21,
+      "tag": "Empirical/Declared",
+      "summary": "- scripts/check.sh added (modeled on cabal-devmelopner + search-box; handles requirements.txt + requirements-dev.txt + pyproject, uv/venv, pytest (unit+securit…"
+    },
+    {
+      "anchor": "roadmap--waves-minimal-hygiene-focus",
+      "family": "doc",
+      "kind": "section",
+      "title": "Waves (minimal / hygiene focus)",
+      "file": "docs/ROADMAP.md",
+      "line": 30,
+      "tag": "Empirical/Declared",
+      "summary": "- [plan.md](../../plan.md) (priority 1 thin + peri py infra)"
+    },
+    {
+      "anchor": "roadmap--links",
+      "family": "doc",
+      "kind": "section",
+      "title": "Links",
+      "file": "docs/ROADMAP.md",
+      "line": 39,
+      "tag": "Empirical/Declared",
+      "summary": "- [plan.md](../../plan.md) (priority 1 thin + peri py infra)"
     },
     {
       "anchor": "gitlabarchitecturecore",

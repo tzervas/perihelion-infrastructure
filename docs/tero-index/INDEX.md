@@ -3,13 +3,13 @@
 > **Honesty:** Empirical/Declared — lite heading/line heuristic over markdown in perihelion-infrastructure via tero-mcp/scripts/generate_lite_index.py; source files are ground truth. Generated 2026-07-09.
 > Use this index to find where to Read, not as authoritative ground truth.
 
-- **Items:** 305
+- **Items:** 311
 - **Flagged:** 0
 - **item_tag:** `Empirical/Declared`
 - **Machine index:** [`index.json`](./index.json)
 - **Manifest:** [`MANIFEST.toml`](./MANIFEST.toml)
 
-## doc (305 entries)
+## doc (311 entries)
 
 | Anchor | Kind | Id | Title | File:Line | Status | Summary |
 |---|---|---|---|---|---|---|
@@ -19,6 +19,7 @@
 | `agents--working-with-cabal-devmelopner-agent-tool` | section | — | Working with cabal-devmelopner agent tool | `AGENTS.md:24` | — | This project is prepared for integration: |
 | `agents--local-checks` | section | — | Local checks | `AGENTS.md:36` | — | Look for: |
 | `agents--further-reading` | section | — | Further reading | `AGENTS.md:44` | — | - README.md |
+| `agents--hygiene-thin-land-2026-07-09-plan-priority-1` | section | — | Hygiene + thin land (2026-07-09, plan priority 1) | `AGENTS.md:54` | — | Added scripts/check.sh (requirements + pyproject aware via uv/venv/pip, pytest incl security/, advisory black/isort/flake, tero regen modeled on cabal-devmelop… |
 | `contributing` | section | — | Contributing to Private Homelab GitLab Infrastructure | `CONTRIBUTING.md:1` | — | Welcome to the Private Homelab GitLab Infrastructure project! This document provides guidelines for contributing to the project while maintaining our high stan… |
 | `contributing--table-of-contents` | section | — | Table of Contents | `CONTRIBUTING.md:5` | — | - [Development Environment](#development-environment) |
 | `contributing--development-environment` | section | — | Development Environment | `CONTRIBUTING.md:15` | — | - Docker: Version 24.0.7 or later with rootless configuration |
@@ -170,6 +171,11 @@
 | `security--security-champions` | section | — | Security Champions | `SECURITY.md:365` | — | Each team should have designated security champions responsible for: |
 | `security--updates-to-this-policy` | section | — | Updates to This Policy | `SECURITY.md:374` | — | This security policy is reviewed and updated: |
 | `security--contact-information` | section | — | Contact Information | `SECURITY.md:387` | — | For questions about this security policy: |
+| `roadmap` | note | — | perihelion-infrastructure — Roadmap | `docs/ROADMAP.md:1` | Living (2026-07-09) | Status: Living (2026-07-09) |
+| `roadmap--current-state-per-readme-tero` | section | — | Current State (per README + tero) | `docs/ROADMAP.md:10` | — | - GitLab Runner Controller (src/gitlabrunnercontroller/): auto-scaling, hardened |
+| `roadmap--hygiene-tero` | section | — | Hygiene + Tero | `docs/ROADMAP.md:21` | — | - scripts/check.sh added (modeled on cabal-devmelopner + search-box; handles requirements.txt + requirements-dev.txt + pyproject, uv/venv, pytest (unit+securit… |
+| `roadmap--waves-minimal-hygiene-focus` | section | — | Waves (minimal / hygiene focus) | `docs/ROADMAP.md:30` | — | - [plan.md](../../plan.md) (priority 1 thin + peri py infra) |
+| `roadmap--links` | section | — | Links | `docs/ROADMAP.md:39` | — | - [plan.md](../../plan.md) (priority 1 thin + peri py infra) |
 | `gitlabarchitecturecore` | section | — | GitLab Self-Hosted Infrastructure: Architecture and Core Components v3.0 | `docs/gitlab_architecture_core.md:1` | — | This specification defines the foundational architecture and core components for a production-grade GitLab deployment. The system implements a three-tier archi… |
 | `gitlabarchitecturecore--executive-summary` | section | — | Executive Summary | `docs/gitlab_architecture_core.md:3` | — | This specification defines the foundational architecture and core components for a production-grade GitLab deployment. The system implements a three-tier archi… |
 | `gitlabarchitecturecore--system-architecture-overview` | section | — | System Architecture Overview | `docs/gitlab_architecture_core.md:7` | — | The infrastructure employs a load balancer-centric architecture utilizing defense-in-depth security principles and Infrastructure as Code methodologies. |
