@@ -3,16 +3,22 @@
 > **Honesty:** Empirical/Declared — lite heading/line heuristic over markdown in perihelion-infrastructure via tero-mcp/scripts/generate_lite_index.py; source files are ground truth. Generated 2026-07-09.
 > Use this index to find where to Read, not as authoritative ground truth.
 
-- **Items:** 299
+- **Items:** 305
 - **Flagged:** 0
 - **item_tag:** `Empirical/Declared`
 - **Machine index:** [`index.json`](./index.json)
 - **Manifest:** [`MANIFEST.toml`](./MANIFEST.toml)
 
-## doc (299 entries)
+## doc (305 entries)
 
 | Anchor | Kind | Id | Title | File:Line | Status | Summary |
 |---|---|---|---|---|---|---|
+| `agents` | other | — | AGENTS.md — perihelion-infrastructure | `AGENTS.md:2` | — | Use Tero + cabal-devmelopner for work here. |
+| `agents--tero-layer-1-corpus-index` | section | — | Tero (Layer-1 corpus index) | `AGENTS.md:6` | — | Repo has docs/tero-index/index.json (generated/ refreshed via tero-mcp/scripts/generateliteindex.py). |
+| `agents--agent-with-context` | other | — | agent with context: | `AGENTS.md:18` | — | uv run --project ../cabal-devmelopner cabal-devmelopner "task description here" --use-tero |
+| `agents--working-with-cabal-devmelopner-agent-tool` | section | — | Working with cabal-devmelopner agent tool | `AGENTS.md:24` | — | This project is prepared for integration: |
+| `agents--local-checks` | section | — | Local checks | `AGENTS.md:36` | — | Look for: |
+| `agents--further-reading` | section | — | Further reading | `AGENTS.md:44` | — | - README.md |
 | `contributing` | section | — | Contributing to Private Homelab GitLab Infrastructure | `CONTRIBUTING.md:1` | — | Welcome to the Private Homelab GitLab Infrastructure project! This document provides guidelines for contributing to the project while maintaining our high stan… |
 | `contributing--table-of-contents` | section | — | Table of Contents | `CONTRIBUTING.md:5` | — | - [Development Environment](#development-environment) |
 | `contributing--development-environment` | section | — | Development Environment | `CONTRIBUTING.md:15` | — | - Docker: Version 24.0.7 or later with rootless configuration |
