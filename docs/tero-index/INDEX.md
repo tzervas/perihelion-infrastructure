@@ -3,13 +3,13 @@
 > **Honesty:** Empirical/Declared — lite heading/line heuristic over markdown in perihelion-infrastructure via tero-mcp/scripts/generate_lite_index.py; source files are ground truth. Generated 2026-07-10.
 > Use this index to find where to Read, not as authoritative ground truth.
 
-- **Items:** 313
+- **Items:** 316
 - **Flagged:** 0
 - **item_tag:** `Empirical/Declared`
 - **Machine index:** [`index.json`](./index.json)
 - **Manifest:** [`MANIFEST.toml`](./MANIFEST.toml)
 
-## doc (313 entries)
+## doc (316 entries)
 
 | Anchor | Kind | Id | Title | File:Line | Status | Summary |
 |---|---|---|---|---|---|---|
@@ -21,6 +21,7 @@
 | `agents--further-reading` | section | — | Further reading | `AGENTS.md:44` | — | - README.md |
 | `agents--hygiene-thin-land-2026-07-09-plan-priority-1` | section | — | Hygiene + thin land (2026-07-09, plan priority 1) | `AGENTS.md:54` | — | Added scripts/check.sh (requirements + pyproject aware via uv/venv/pip, pytest incl security/, advisory black/isort/flake, tero regen modeled on cabal-devmelop… |
 | `agents--distribution-semver-appended` | section | — | Distribution + Semver (appended) | `AGENTS.md:60` | — | Semver baseline for this supportive tooling/helper extracted from mycelium (read-only clone at /root/git/isolated/mycelium, perms 555). |
+| `agents--semver-releases-2026-07-10-appended` | section | — | Semver + Releases (2026-07-10 appended) | `AGENTS.md:76` | — | Semver baseline for this supportive tooling/helper extracted from mycelium (read-only clone at /root/git/isolated/mycelium, perms 555). |
 | `contributing` | section | — | Contributing to Private Homelab GitLab Infrastructure | `CONTRIBUTING.md:1` | — | Welcome to the Private Homelab GitLab Infrastructure project! This document provides guidelines for contributing to the project while maintaining our high stan… |
 | `contributing--table-of-contents` | section | — | Table of Contents | `CONTRIBUTING.md:5` | — | - [Development Environment](#development-environment) |
 | `contributing--development-environment` | section | — | Development Environment | `CONTRIBUTING.md:15` | — | - Docker: Version 24.0.7 or later with rootless configuration |
@@ -113,8 +114,10 @@
 | `readme--documentation` | section | — | Documentation | `README.md:117` | — | - [Implementation Plan](docs/gitlabimplementationplan.md) - Detailed project execution plan |
 | `readme--license` | section | — | License | `README.md:125` | — | MIT License - see [LICENSE](LICENSE) file for details. |
 | `readme--contributing` | section | — | Contributing | `README.md:129` | — | Please see [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and development setup instructions. |
-| `readme--maintainers` | section | — | Maintainers | `README.md:133` | — | - Tyler Zervas (@tzervas) |
-| `readme--security` | section | — | Security | `README.md:137` | — | For security issues, please see our [Security Policy](SECURITY.md) or contact security@company.com. |
+| `readme--semver-baseline-2026-07-10` | section | — | Semver baseline (2026-07-10) | `README.md:133` | — | v0.2.0 for perihelion-infrastructure (supportive Python infra tooling from mycelium read-only). |
+| `readme--maintainers` | section | — | Maintainers | `README.md:137` | — | - Tyler Zervas (@tzervas) |
+| `readme--security` | section | — | Security | `README.md:141` | — | For security issues, please see our [Security Policy](SECURITY.md) or contact security@company.com. |
+| `readme--semver-baseline-2026-07-10-2` | section | — | Semver baseline (2026-07-10) | `README.md:144` | — | v0.2.0 for perihelion-infrastructure (supportive tooling from mycelium read-only). |
 | `security` | section | — | Security Policy | `SECURITY.md:1` | — | The Private Homelab GitLab Infrastructure project takes security seriously. This document outlines our security practices, vulnerability reporting procedures,… |
 | `security--overview` | section | — | Overview | `SECURITY.md:3` | — | The Private Homelab GitLab Infrastructure project takes security seriously. This document outlines our security practices, vulnerability reporting procedures,… |
 | `security--supported-versions` | section | — | Supported Versions | `SECURITY.md:7` | — | We provide security updates for the following versions: |

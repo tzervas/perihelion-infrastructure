@@ -84,6 +84,16 @@
       "summary": "Semver baseline for this supportive tooling/helper extracted from mycelium (read-only clone at /root/git/isolated/mycelium, perms 555)."
     },
     {
+      "anchor": "agents--semver-releases-2026-07-10-appended",
+      "family": "doc",
+      "kind": "section",
+      "title": "Semver + Releases (2026-07-10 appended)",
+      "file": "AGENTS.md",
+      "line": 76,
+      "tag": "Empirical/Declared",
+      "summary": "Semver baseline for this supportive tooling/helper extracted from mycelium (read-only clone at /root/git/isolated/mycelium, perms 555)."
+    },
+    {
       "anchor": "contributing",
       "family": "doc",
       "kind": "section",
@@ -1004,12 +1014,22 @@
       "summary": "Please see [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and development setup instructions."
     },
     {
+      "anchor": "readme--semver-baseline-2026-07-10",
+      "family": "doc",
+      "kind": "section",
+      "title": "Semver baseline (2026-07-10)",
+      "file": "README.md",
+      "line": 133,
+      "tag": "Empirical/Declared",
+      "summary": "v0.2.0 for perihelion-infrastructure (supportive Python infra tooling from mycelium read-only)."
+    },
+    {
       "anchor": "readme--maintainers",
       "family": "doc",
       "kind": "section",
       "title": "Maintainers",
       "file": "README.md",
-      "line": 133,
+      "line": 137,
       "tag": "Empirical/Declared",
       "summary": "- Tyler Zervas (@tzervas)"
     },
@@ -1019,9 +1039,19 @@
       "kind": "section",
       "title": "Security",
       "file": "README.md",
-      "line": 137,
+      "line": 141,
       "tag": "Empirical/Declared",
       "summary": "For security issues, please see our [Security Policy](SECURITY.md) or contact security@company.com."
+    },
+    {
+      "anchor": "readme--semver-baseline-2026-07-10-2",
+      "family": "doc",
+      "kind": "section",
+      "title": "Semver baseline (2026-07-10)",
+      "file": "README.md",
+      "line": 144,
+      "tag": "Empirical/Declared",
+      "summary": "v0.2.0 for perihelion-infrastructure (supportive tooling from mycelium read-only)."
     },
     {
       "anchor": "security",
