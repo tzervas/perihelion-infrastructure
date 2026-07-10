@@ -81,7 +81,7 @@
       "file": "AGENTS.md",
       "line": 60,
       "tag": "Empirical/Declared",
-      "summary": "- Use podman for local GHCR builds (no Actions credits)."
+      "summary": "Semver baseline for this supportive tooling/helper extracted from mycelium (read-only clone at /root/git/isolated/mycelium, perms 555)."
     },
     {
       "anchor": "contributing",

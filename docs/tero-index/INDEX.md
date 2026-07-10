@@ -20,7 +20,7 @@
 | `agents--local-checks` | section | — | Local checks | `AGENTS.md:36` | — | Look for: |
 | `agents--further-reading` | section | — | Further reading | `AGENTS.md:44` | — | - README.md |
 | `agents--hygiene-thin-land-2026-07-09-plan-priority-1` | section | — | Hygiene + thin land (2026-07-09, plan priority 1) | `AGENTS.md:54` | — | Added scripts/check.sh (requirements + pyproject aware via uv/venv/pip, pytest incl security/, advisory black/isort/flake, tero regen modeled on cabal-devmelop… |
-| `agents--distribution-semver-appended` | section | — | Distribution + Semver (appended) | `AGENTS.md:60` | — | - Use podman for local GHCR builds (no Actions credits). |
+| `agents--distribution-semver-appended` | section | — | Distribution + Semver (appended) | `AGENTS.md:60` | — | Semver baseline for this supportive tooling/helper extracted from mycelium (read-only clone at /root/git/isolated/mycelium, perms 555). |
 | `contributing` | section | — | Contributing to Private Homelab GitLab Infrastructure | `CONTRIBUTING.md:1` | — | Welcome to the Private Homelab GitLab Infrastructure project! This document provides guidelines for contributing to the project while maintaining our high stan… |
 | `contributing--table-of-contents` | section | — | Table of Contents | `CONTRIBUTING.md:5` | — | - [Development Environment](#development-environment) |
 | `contributing--development-environment` | section | — | Development Environment | `CONTRIBUTING.md:15` | — | - Docker: Version 24.0.7 or later with rootless configuration |

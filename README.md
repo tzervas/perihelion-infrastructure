@@ -130,6 +130,10 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 Please see [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and development setup instructions.
 
+## Semver baseline (2026-07-10)
+v0.2.0 for perihelion-infrastructure (supportive Python infra tooling from mycelium read-only).
+Includes Dockerfile for local GHCR distribution. See AGENTS.md.
+
 ## Maintainers
 
 - Tyler Zervas (@tzervas)

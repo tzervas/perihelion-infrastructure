@@ -58,10 +58,18 @@ Run: `./scripts/check.sh` ; `/root/git/scripts/update-tero.sh perihelion-infrast
 
 
 ## Distribution + Semver (appended)
+
+Semver baseline for this supportive tooling/helper extracted from mycelium (read-only clone at /root/git/isolated/mycelium, perms 555).
+Easily ported universal implementation (Python infra + k8s/helm).
+Baseline v0.2.0.
+Process: local build, hygiene, tero cites, plan.md, local podman GHCR (executed), no Actions.
+No mods to mycelium core.
+Cites: plan.md, user 'tooling ... supportive ... rust or python ... clone copy read only'.
+
 - Use podman for local GHCR builds (no Actions credits).
 - Follow semver from CONTRIBUTING.
 - Build: podman build -t ghcr...:<semver> ; podman push.
 - Package: python -m build for sdist/wheel.
-- Tag: git tag -s v<semver>; gh release create.
+- Tag: git tag -a v<semver>; gh release create.
 - Update pyproject, Dockerfile, helm/k8s examples, docs on bump.
 - Tero: text_search "version|release|docker|ghcr".
