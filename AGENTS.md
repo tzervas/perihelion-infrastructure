@@ -56,3 +56,12 @@ Added `scripts/check.sh` (requirements + pyproject aware via uv/venv/pip, pytest
 Cites: plan.md:90 (thin repos hygiene/landing + perihelion-infrastructure), WORKSPACE_CABAL_TERO_READINESS.md (hygiene tranche, branch), wsfull-wave-2026-07-09-compact.md, perihelion tero index pre/post. 
 Run: `./scripts/check.sh` ; `/root/git/scripts/update-tero.sh perihelion-infrastructure` ; tero queries. Make targets remain canonical for full.
 
+
+## Distribution + Semver (appended)
+- Use podman for local GHCR builds (no Actions credits).
+- Follow semver from CONTRIBUTING.
+- Build: podman build -t ghcr...:<semver> ; podman push.
+- Package: python -m build for sdist/wheel.
+- Tag: git tag -s v<semver>; gh release create.
+- Update pyproject, Dockerfile, helm/k8s examples, docs on bump.
+- Tero: text_search "version|release|docker|ghcr".

@@ -48,3 +48,13 @@ See "🚀 Project Status" in README for completed/in-progress/upcoming.
 **Tero-first:** Use before large changes/greps. Every answer has citations + EXPLAIN. Append-only for docs/AGENTS/ROADMAP.
 
 (End of minimal roadmap; append-only.)
+
+## Semver + Distribution Build (chore/semver-ghcr-distribution-build appended)
+- Established baseline from git history + docs (initial pyproject 0.1.0, no prior releases; CONTRIBUTING mandates semver MAJOR.MINOR.PATCH + GPG signed tags + release checklist).
+- Bumped Python package to 0.2.0 (minor for new distribution build capability).
+- Added root Dockerfile (multi-stage prod, security-hardened, matches k8s/helm, uv/pip, cli entry).
+- Built Python package (dist/ with 0.2.0 wheels/sdist) and container image locally with **podman** (preferred).
+- GHCR artifact: ghcr.io/tzervas/perihelion-infrastructure/gitlab-runner-controller:0.2.0 + :latest pushed.
+- Release: will tag v0.2.0 (GPG), gh release.
+- Tero-first (queries on version/release/docker/dist), hygiene (check.sh), append-only.
+- Cites: plan.md, CONTRIBUTING--version-management--release-process, pyproject, Makefile docker targets, k8s/helm image refs.

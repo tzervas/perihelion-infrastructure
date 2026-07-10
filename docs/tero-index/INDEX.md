@@ -1,15 +1,15 @@
 # perihelion-infrastructure — Tero Index (Layer 1)
 
-> **Honesty:** Empirical/Declared — lite heading/line heuristic over markdown in perihelion-infrastructure via tero-mcp/scripts/generate_lite_index.py; source files are ground truth. Generated 2026-07-09.
+> **Honesty:** Empirical/Declared — lite heading/line heuristic over markdown in perihelion-infrastructure via tero-mcp/scripts/generate_lite_index.py; source files are ground truth. Generated 2026-07-10.
 > Use this index to find where to Read, not as authoritative ground truth.
 
-- **Items:** 311
+- **Items:** 313
 - **Flagged:** 0
 - **item_tag:** `Empirical/Declared`
 - **Machine index:** [`index.json`](./index.json)
 - **Manifest:** [`MANIFEST.toml`](./MANIFEST.toml)
 
-## doc (311 entries)
+## doc (313 entries)
 
 | Anchor | Kind | Id | Title | File:Line | Status | Summary |
 |---|---|---|---|---|---|---|
@@ -20,6 +20,7 @@
 | `agents--local-checks` | section | — | Local checks | `AGENTS.md:36` | — | Look for: |
 | `agents--further-reading` | section | — | Further reading | `AGENTS.md:44` | — | - README.md |
 | `agents--hygiene-thin-land-2026-07-09-plan-priority-1` | section | — | Hygiene + thin land (2026-07-09, plan priority 1) | `AGENTS.md:54` | — | Added scripts/check.sh (requirements + pyproject aware via uv/venv/pip, pytest incl security/, advisory black/isort/flake, tero regen modeled on cabal-devmelop… |
+| `agents--distribution-semver-appended` | section | — | Distribution + Semver (appended) | `AGENTS.md:60` | — | - Use podman for local GHCR builds (no Actions credits). |
 | `contributing` | section | — | Contributing to Private Homelab GitLab Infrastructure | `CONTRIBUTING.md:1` | — | Welcome to the Private Homelab GitLab Infrastructure project! This document provides guidelines for contributing to the project while maintaining our high stan… |
 | `contributing--table-of-contents` | section | — | Table of Contents | `CONTRIBUTING.md:5` | — | - [Development Environment](#development-environment) |
 | `contributing--development-environment` | section | — | Development Environment | `CONTRIBUTING.md:15` | — | - Docker: Version 24.0.7 or later with rootless configuration |
@@ -176,6 +177,7 @@
 | `roadmap--hygiene-tero` | section | — | Hygiene + Tero | `docs/ROADMAP.md:21` | — | - scripts/check.sh added (modeled on cabal-devmelopner + search-box; handles requirements.txt + requirements-dev.txt + pyproject, uv/venv, pytest (unit+securit… |
 | `roadmap--waves-minimal-hygiene-focus` | section | — | Waves (minimal / hygiene focus) | `docs/ROADMAP.md:30` | — | - [plan.md](../../plan.md) (priority 1 thin + peri py infra) |
 | `roadmap--links` | section | — | Links | `docs/ROADMAP.md:39` | — | - [plan.md](../../plan.md) (priority 1 thin + peri py infra) |
+| `roadmap--semver-distribution-build-chore-semver-ghcr-distribution-build-appended` | section | — | Semver + Distribution Build (chore/semver-ghcr-distribution-build appended) | `docs/ROADMAP.md:52` | — | - Established baseline from git history + docs (initial pyproject 0.1.0, no prior releases; CONTRIBUTING mandates semver MAJOR.MINOR.PATCH + GPG signed tags +… |
 | `gitlabarchitecturecore` | section | — | GitLab Self-Hosted Infrastructure: Architecture and Core Components v3.0 | `docs/gitlab_architecture_core.md:1` | — | This specification defines the foundational architecture and core components for a production-grade GitLab deployment. The system implements a three-tier archi… |
 | `gitlabarchitecturecore--executive-summary` | section | — | Executive Summary | `docs/gitlab_architecture_core.md:3` | — | This specification defines the foundational architecture and core components for a production-grade GitLab deployment. The system implements a three-tier archi… |
 | `gitlabarchitecturecore--system-architecture-overview` | section | — | System Architecture Overview | `docs/gitlab_architecture_core.md:7` | — | The infrastructure employs a load balancer-centric architecture utilizing defense-in-depth security principles and Infrastructure as Code methodologies. |

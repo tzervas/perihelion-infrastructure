@@ -1,5 +1,5 @@
 {
-  "generated": "Empirical/Declared — lite heading/line heuristic over markdown in perihelion-infrastructure via tero-mcp/scripts/generate_lite_index.py; source files are ground truth. Generated 2026-07-09.",
+  "generated": "Empirical/Declared — lite heading/line heuristic over markdown in perihelion-infrastructure via tero-mcp/scripts/generate_lite_index.py; source files are ground truth. Generated 2026-07-10.",
   "item_tag": "Empirical/Declared",
   "siblings": [],
   "items": [
@@ -72,6 +72,16 @@
       "line": 54,
       "tag": "Empirical/Declared",
       "summary": "Added scripts/check.sh (requirements + pyproject aware via uv/venv/pip, pytest incl security/, advisory black/isort/flake, tero regen modeled on cabal-devmelop…"
+    },
+    {
+      "anchor": "agents--distribution-semver-appended",
+      "family": "doc",
+      "kind": "section",
+      "title": "Distribution + Semver (appended)",
+      "file": "AGENTS.md",
+      "line": 60,
+      "tag": "Empirical/Declared",
+      "summary": "- Use podman for local GHCR builds (no Actions credits)."
     },
     {
       "anchor": "contributing",
@@ -1630,6 +1640,16 @@
       "line": 39,
       "tag": "Empirical/Declared",
       "summary": "- [plan.md](../../plan.md) (priority 1 thin + peri py infra)"
+    },
+    {
+      "anchor": "roadmap--semver-distribution-build-chore-semver-ghcr-distribution-build-appended",
+      "family": "doc",
+      "kind": "section",
+      "title": "Semver + Distribution Build (chore/semver-ghcr-distribution-build appended)",
+      "file": "docs/ROADMAP.md",
+      "line": 52,
+      "tag": "Empirical/Declared",
+      "summary": "- Established baseline from git history + docs (initial pyproject 0.1.0, no prior releases; CONTRIBUTING mandates semver MAJOR.MINOR.PATCH + GPG signed tags +…"
     },
     {
       "anchor": "gitlabarchitecturecore",

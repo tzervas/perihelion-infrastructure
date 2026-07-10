@@ -4,8 +4,8 @@
 [index]
 schema = "tero-layer1-v1"
 repo = "perihelion-infrastructure"
-generated_at = "2026-07-09T23:51:07Z"
-item_count = 311
+generated_at = "2026-07-10T01:24:40Z"
+item_count = 313
 source_files = 10
 generator = "tero-mcp/scripts/generate_lite_index.py"
 honesty = "Empirical/Declared — markdown heading heuristic; source is ground truth"

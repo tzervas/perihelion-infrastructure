@@ -96,7 +96,7 @@ spec:
       
       containers:
       - name: controller
-        image: gitlab-runner-controller:latest
+        image: ghcr.io/tzervas/perihelion-infrastructure/gitlab-runner-controller:0.2.0
         imagePullPolicy: IfNotPresent
         
         # Security Context - Container Level
