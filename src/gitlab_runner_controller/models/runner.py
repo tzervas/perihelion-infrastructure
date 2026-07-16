@@ -167,7 +167,7 @@ class RunnerProfile(BaseModel):
     name: str = Field(
         ...,
         description="Profile name (must be DNS-compatible)",
-        regex=r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+        pattern=r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
     )
     description: str = Field(
         default="",
@@ -393,7 +393,7 @@ class ScalingConfiguration(BaseModel):
         description="Cooldown period between scaling operations (seconds)"
     )
     
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def validate_scaling_configuration(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         """Validate scaling configuration for consistency."""
         min_replicas = values.get("min_replicas", 0)
@@ -486,7 +486,7 @@ class ControllerConfiguration(BaseModel):
     )
     log_level: str = Field(
         default="INFO",
-        regex=r"^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$",
+        pattern=r"^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$",
         description="Logging level"
     )
     enable_metrics: bool = Field(

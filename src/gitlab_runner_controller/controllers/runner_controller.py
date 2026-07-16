@@ -245,4 +245,638 @@ class GitLabRunnerController:
                 ca_cert_path=self.config.gitlab.ca_cert_path,
                 tls_verify=self.config.gitlab.tls_verify,
                 logger=self.logger
-            )\n            \n            # Validate GitLab connectivity and authentication\n            await self.gitlab_client.validate_connection()\n            \n        except Exception as e:\n            self.logger.error(\"Failed to initialize GitLab client\", error=str(e))\n            SECURITY_EVENTS.labels(event_type=\"gitlab_init_failure\", severity=\"critical\").inc()\n            raise ConnectionError(f\"GitLab initialization failed: {e}\")\n            \n    async def _validate_security_configuration(self) -> None:\n        \"\"\"Validate security configuration and detect potential vulnerabilities.\"\"\"\n        try:\n            # Validate runner profiles for security compliance\n            for profile_name, profile in self.config.profiles.items():\n                issues = self.security_validator.validate_runner_profile(profile)\n                if issues:\n                    self.logger.warning(\n                        \"Security issues found in runner profile\",\n                        profile=profile_name,\n                        issues=issues\n                    )\n                    SECURITY_EVENTS.labels(event_type=\"profile_security_warning\", severity=\"medium\").inc()\n                    \n            # Validate namespace security policies\n            await self.k8s_client.validate_namespace_security()\n            \n            # Check for suspicious configuration patterns\n            if self.config.enable_debug:\n                self.logger.warning(\n                    \"Debug mode enabled - not recommended for production\",\n                    environment=\"production\"\n                )\n                SECURITY_EVENTS.labels(event_type=\"debug_mode_warning\", severity=\"low\").inc()\n                \n        except Exception as e:\n            self.logger.error(\"Security validation failed\", error=str(e))\n            SECURITY_EVENTS.labels(event_type=\"security_validation_failure\", severity=\"high\").inc()\n            raise\n            \n    async def _control_loop(self) -> None:\n        \"\"\"Main control loop with security monitoring and intelligent scaling.\"\"\"\n        self.logger.info(\"Starting main control loop\")\n        \n        while self._running:\n            try:\n                # Check rate limiting to prevent abuse\n                if not self.rate_limiter.allow_request(\"control_loop\"):\n                    self.logger.warning(\"Control loop rate limited\")\n                    SECURITY_EVENTS.labels(event_type=\"rate_limit_violation\", severity=\"medium\").inc()\n                    await asyncio.sleep(5)\n                    continue\n                    \n                # Update runner states from Kubernetes\n                await self._sync_runner_states()\n                \n                # Get current job queue information\n                queue_depth = await self._get_job_queue_depth()\n                JOB_QUEUE_DEPTH.set(queue_depth)\n                \n                # Make scaling decisions\n                await self._make_scaling_decision(queue_depth)\n                \n                # Clean up failed/idle runners\n                await self._cleanup_idle_runners()\n                \n                # Update metrics\n                self._update_runner_metrics()\n                \n                # Check for security anomalies\n                await self._detect_security_anomalies()\n                \n                await asyncio.sleep(10)  # Control loop interval\n                \n            except Exception as e:\n                self.logger.error(\"Error in control loop\", error=str(e))\n                SECURITY_EVENTS.labels(event_type=\"control_loop_error\", severity=\"high\").inc()\n                await asyncio.sleep(30)  # Back off on errors\n                \n    async def _sync_runner_states(self) -> None:\n        \"\"\"Synchronize runner states with Kubernetes cluster.\"\"\"\n        try:\n            # Get all runner pods from Kubernetes\n            pods = await self.k8s_client.list_runner_pods()\n            \n            # Update existing runner states\n            for runner_id, runner in list(self.runners.items()):\n                pod = next((p for p in pods if p.metadata.name == runner.pod_name), None)\n                \n                if pod is None:\n                    # Pod no longer exists\n                    if runner.status not in [RunnerStatus.TERMINATED, RunnerStatus.FAILED]:\n                        self.logger.warning(\n                            \"Runner pod disappeared unexpectedly\",\n                            runner_id=runner_id,\n                            pod_name=runner.pod_name\n                        )\n                        runner.status = RunnerStatus.FAILED\n                        runner.error_message = \"Pod disappeared unexpectedly\"\n                        SECURITY_EVENTS.labels(event_type=\"pod_disappeared\", severity=\"medium\").inc()\n                else:\n                    # Update runner status based on pod state\n                    await self._update_runner_from_pod(runner, pod)\n                    \n            # Detect orphaned pods (pods without corresponding runner objects)\n            runner_pod_names = {r.pod_name for r in self.runners.values() if r.pod_name}\n            for pod in pods:\n                if pod.metadata.name not in runner_pod_names:\n                    self.logger.warning(\n                        \"Found orphaned runner pod\",\n                        pod_name=pod.metadata.name,\n                        pod_namespace=pod.metadata.namespace\n                    )\n                    SECURITY_EVENTS.labels(event_type=\"orphaned_pod\", severity=\"medium\").inc()\n                    # Optionally clean up orphaned pods\n                    await self.k8s_client.delete_pod(pod.metadata.name)\n                    \n        except Exception as e:\n            self.logger.error(\"Failed to sync runner states\", error=str(e))\n            RUNNER_OPERATIONS.labels(operation=\"sync_states\", result=\"failure\", profile=\"all\").inc()\n            \n    async def _update_runner_from_pod(self, runner: RunnerInstance, pod: Any) -> None:\n        \"\"\"Update runner instance from Kubernetes pod state.\"\"\"\n        pod_phase = pod.status.phase\n        \n        # Update basic information\n        runner.node_name = pod.spec.node_name\n        \n        # Map Kubernetes pod phase to runner status\n        if pod_phase == \"Pending\":\n            if runner.status == RunnerStatus.PENDING:\n                runner.status = RunnerStatus.STARTING\n        elif pod_phase == \"Running\":\n            if runner.status in [RunnerStatus.PENDING, RunnerStatus.STARTING]:\n                runner.status = RunnerStatus.READY\n                runner.started_at = datetime.utcnow()\n                RUNNER_LIFECYCLE_DURATION.labels(\n                    phase=\"startup\", \n                    profile=runner.profile_name\n                ).observe(\n                    (runner.started_at - runner.created_at).total_seconds()\n                )\n        elif pod_phase in [\"Failed\", \"Succeeded\"]:\n            if runner.status != RunnerStatus.TERMINATED:\n                runner.status = RunnerStatus.FAILED if pod_phase == \"Failed\" else RunnerStatus.TERMINATED\n                if pod.status.container_statuses:\n                    for container_status in pod.status.container_statuses:\n                        if container_status.state.terminated:\n                            runner.error_message = container_status.state.terminated.reason\n                            \n        # Check for security events in pod events\n        await self._check_pod_security_events(runner, pod)\n        \n    async def _check_pod_security_events(self, runner: RunnerInstance, pod: Any) -> None:\n        \"\"\"Check for security-related events in pod lifecycle.\"\"\"\n        try:\n            # Get pod events\n            events = await self.k8s_client.get_pod_events(pod.metadata.name)\n            \n            for event in events:\n                event_reason = event.reason.lower()\n                event_message = event.message.lower()\n                \n                # Detect suspicious events\n                suspicious_patterns = [\n                    \"failed to pull image\",\n                    \"image pull backoff\",\n                    \"crashloopbackoff\",\n                    \"oomkilled\",\n                    \"security context\",\n                    \"privilege escalation\",\n                ]\n                \n                if any(pattern in event_reason or pattern in event_message \n                       for pattern in suspicious_patterns):\n                    self.logger.warning(\n                        \"Suspicious pod event detected\",\n                        runner_id=runner.id,\n                        pod_name=pod.metadata.name,\n                        event_reason=event.reason,\n                        event_message=event.message\n                    )\n                    SECURITY_EVENTS.labels(event_type=\"suspicious_pod_event\", severity=\"medium\").inc()\n                    \n        except Exception as e:\n            self.logger.debug(\"Failed to check pod events\", error=str(e))\n            \n    async def _get_job_queue_depth(self) -> int:\n        \"\"\"Get current GitLab job queue depth with caching and validation.\"\"\"\n        try:\n            # Rate limit GitLab API calls\n            if not self.rate_limiter.allow_request(\"gitlab_api\"):\n                self.logger.debug(\"GitLab API rate limited\")\n                return 0\n                \n            # Get pending jobs from GitLab\n            queue_depth = await self.gitlab_client.get_pending_jobs_count()\n            \n            # Validate reasonable queue depth (detect potential API manipulation)\n            if queue_depth > 10000:  # Sanity check\n                self.logger.warning(\n                    \"Extremely high queue depth detected\",\n                    queue_depth=queue_depth\n                )\n                SECURITY_EVENTS.labels(event_type=\"suspicious_queue_depth\", severity=\"medium\").inc()\n                return min(queue_depth, 1000)  # Cap at reasonable value\n                \n            return queue_depth\n            \n        except Exception as e:\n            self.logger.error(\"Failed to get job queue depth\", error=str(e))\n            return 0\n            \n    async def _make_scaling_decision(self, queue_depth: int) -> None:\n        \"\"\"Make intelligent scaling decisions based on current state and policy.\"\"\"\n        # Check if we're in cooldown period\n        if datetime.utcnow() - self.last_scaling_decision < self.scaling_cooldown:\n            return\n            \n        try:\n            current_runners = len([r for r in self.runners.values() \n                                  if r.status in [RunnerStatus.READY, RunnerStatus.RUNNING]])\n            \n            scaling_config = self.config.scaling\n            \n            # Determine scaling action based on policy\n            if scaling_config.policy == ScalingPolicy.STATIC:\n                target_runners = scaling_config.min_replicas\n            else:\n                target_runners = self._calculate_target_runners(queue_depth, current_runners)\n                \n            # Apply scaling constraints\n            target_runners = max(scaling_config.min_replicas, \n                               min(target_runners, scaling_config.max_replicas))\n            \n            # Execute scaling action\n            if target_runners > current_runners:\n                await self._scale_up(target_runners - current_runners)\n            elif target_runners < current_runners:\n                await self._scale_down(current_runners - target_runners)\n                \n        except Exception as e:\n            self.logger.error(\"Failed to make scaling decision\", error=str(e))\n            SECURITY_EVENTS.labels(event_type=\"scaling_decision_error\", severity=\"medium\").inc()\n            \n    def _calculate_target_runners(self, queue_depth: int, current_runners: int) -> int:\n        \"\"\"Calculate target number of runners based on intelligent algorithms.\"\"\"\n        scaling_config = self.config.scaling\n        \n        if scaling_config.policy == ScalingPolicy.AGGRESSIVE:\n            # Scale quickly for burst workloads\n            if queue_depth > scaling_config.scale_up_threshold:\n                return current_runners + max(1, queue_depth // 2)\n            elif queue_depth == 0:\n                return max(scaling_config.min_replicas, current_runners - 2)\n        elif scaling_config.policy == ScalingPolicy.CONSERVATIVE:\n            # Scale slowly for steady workloads\n            if queue_depth > scaling_config.scale_up_threshold * 2:\n                return current_runners + 1\n            elif queue_depth == 0:\n                return max(scaling_config.min_replicas, current_runners - 1)\n        else:  # ADAPTIVE\n            # Balance between responsiveness and stability\n            utilization = queue_depth / max(current_runners, 1)\n            \n            if utilization > scaling_config.target_utilization * 1.5:\n                return current_runners + max(1, queue_depth // 3)\n            elif utilization < scaling_config.target_utilization * 0.3 and queue_depth == 0:\n                return max(scaling_config.min_replicas, current_runners - 1)\n                \n        return current_runners\n        \n    async def _scale_up(self, count: int) -> None:\n        \"\"\"Scale up runner pool with security validation.\"\"\"\n        self.logger.info(\"Scaling up runners\", count=count)\n        \n        try:\n            for _ in range(count):\n                # Select profile (could be enhanced with intelligent selection)\n                profile = self.config.profiles[self.config.default_profile]\n                \n                # Create new runner instance\n                runner = RunnerInstance(profile_name=profile.name)\n                \n                # Deploy runner pod with security constraints\n                success = await self._deploy_runner_pod(runner, profile)\n                \n                if success:\n                    self.runners[runner.id] = runner\n                    RUNNER_OPERATIONS.labels(\n                        operation=\"scale_up\", \n                        result=\"success\", \n                        profile=profile.name\n                    ).inc()\n                    SCALING_DECISIONS.labels(\n                        direction=\"up\", \n                        reason=\"queue_depth\", \n                        profile=profile.name\n                    ).inc()\n                else:\n                    RUNNER_OPERATIONS.labels(\n                        operation=\"scale_up\", \n                        result=\"failure\", \n                        profile=profile.name\n                    ).inc()\n                    \n            self.last_scaling_decision = datetime.utcnow()\n            \n        except Exception as e:\n            self.logger.error(\"Failed to scale up\", error=str(e))\n            SECURITY_EVENTS.labels(event_type=\"scale_up_error\", severity=\"medium\").inc()\n            \n    async def _scale_down(self, count: int) -> None:\n        \"\"\"Scale down runner pool gracefully.\"\"\"\n        self.logger.info(\"Scaling down runners\", count=count)\n        \n        try:\n            # Select idle runners for termination\n            idle_runners = [\n                r for r in self.runners.values()\n                if r.status == RunnerStatus.READY and r.is_idle()\n            ]\n            \n            # Sort by idle time (longest idle first)\n            idle_runners.sort(\n                key=lambda r: r.last_activity or r.created_at\n            )\n            \n            # Terminate selected runners\n            terminated_count = 0\n            for runner in idle_runners[:count]:\n                success = await self._terminate_runner(runner)\n                if success:\n                    terminated_count += 1\n                    RUNNER_OPERATIONS.labels(\n                        operation=\"scale_down\", \n                        result=\"success\", \n                        profile=runner.profile_name\n                    ).inc()\n                    SCALING_DECISIONS.labels(\n                        direction=\"down\", \n                        reason=\"idle_timeout\", \n                        profile=runner.profile_name\n                    ).inc()\n                    \n            self.logger.info(\"Scaled down runners\", terminated=terminated_count)\n            self.last_scaling_decision = datetime.utcnow()\n            \n        except Exception as e:\n            self.logger.error(\"Failed to scale down\", error=str(e))\n            SECURITY_EVENTS.labels(event_type=\"scale_down_error\", severity=\"medium\").inc()\n            \n    async def _deploy_runner_pod(self, runner: RunnerInstance, profile: RunnerProfile) -> bool:\n        \"\"\"Deploy runner pod with comprehensive security hardening.\"\"\"\n        try:\n            # Generate unique pod name\n            pod_name = f\"gitlab-runner-{runner.id}\"\n            runner.pod_name = pod_name\n            \n            # Create pod specification with security context\n            pod_spec = await self.k8s_client.create_runner_pod_spec(\n                name=pod_name,\n                profile=profile,\n                runner_id=runner.id\n            )\n            \n            # Deploy pod\n            success = await self.k8s_client.create_pod(pod_spec)\n            \n            if success:\n                self.logger.info(\n                    \"Runner pod deployed successfully\",\n                    runner_id=runner.id,\n                    pod_name=pod_name,\n                    profile=profile.name\n                )\n                return True\n            else:\n                self.logger.error(\n                    \"Failed to deploy runner pod\",\n                    runner_id=runner.id,\n                    pod_name=pod_name\n                )\n                return False\n                \n        except Exception as e:\n            self.logger.error(\n                \"Exception during pod deployment\",\n                runner_id=runner.id,\n                error=str(e)\n            )\n            SECURITY_EVENTS.labels(event_type=\"pod_deployment_error\", severity=\"medium\").inc()\n            return False\n            \n    async def _terminate_runner(self, runner: RunnerInstance) -> bool:\n        \"\"\"Gracefully terminate a runner with proper cleanup.\"\"\"\n        try:\n            self.logger.info(\n                \"Terminating runner\",\n                runner_id=runner.id,\n                pod_name=runner.pod_name\n            )\n            \n            # Unregister from GitLab if registered\n            if runner.gitlab_runner_id and self.gitlab_client:\n                await self.gitlab_client.unregister_runner(runner.gitlab_runner_id)\n                \n            # Delete Kubernetes pod\n            if runner.pod_name and self.k8s_client:\n                success = await self.k8s_client.delete_pod(runner.pod_name)\n                if not success:\n                    self.logger.warning(\n                        \"Failed to delete runner pod\",\n                        runner_id=runner.id,\n                        pod_name=runner.pod_name\n                    )\n                    \n            # Update runner status\n            runner.status = RunnerStatus.TERMINATED\n            \n            # Record lifecycle duration\n            if runner.started_at:\n                duration = (datetime.utcnow() - runner.started_at).total_seconds()\n                RUNNER_LIFECYCLE_DURATION.labels(\n                    phase=\"total\", \n                    profile=runner.profile_name\n                ).observe(duration)\n                \n            return True\n            \n        except Exception as e:\n            self.logger.error(\n                \"Failed to terminate runner\",\n                runner_id=runner.id,\n                error=str(e)\n            )\n            return False\n            \n    async def _cleanup_idle_runners(self) -> None:\n        \"\"\"Clean up idle and failed runners.\"\"\"\n        try:\n            max_idle_time = timedelta(seconds=self.config.scaling.max_idle_time)\n            current_time = datetime.utcnow()\n            \n            runners_to_remove = []\n            \n            for runner_id, runner in self.runners.items():\n                should_remove = False\n                \n                # Remove terminated runners\n                if runner.status == RunnerStatus.TERMINATED:\n                    should_remove = True\n                    \n                # Remove failed runners after delay\n                elif runner.status == RunnerStatus.FAILED:\n                    if current_time - runner.created_at > timedelta(minutes=5):\n                        should_remove = True\n                        \n                # Remove long-idle runners\n                elif runner.is_idle(max_idle_time):\n                    await self._terminate_runner(runner)\n                    should_remove = True\n                    \n                if should_remove:\n                    runners_to_remove.append(runner_id)\n                    \n            # Clean up runner objects\n            for runner_id in runners_to_remove:\n                del self.runners[runner_id]\n                \n        except Exception as e:\n            self.logger.error(\"Failed to cleanup idle runners\", error=str(e))\n            \n    async def _terminate_all_runners(self) -> None:\n        \"\"\"Terminate all runners during shutdown.\"\"\"\n        self.logger.info(\"Terminating all runners\", count=len(self.runners))\n        \n        for runner in list(self.runners.values()):\n            await self._terminate_runner(runner)\n            \n        self.runners.clear()\n        \n    def _update_runner_metrics(self) -> None:\n        \"\"\"Update Prometheus metrics for monitoring.\"\"\"\n        # Clear existing metrics\n        RUNNER_COUNT._metrics.clear()\n        \n        # Count runners by status and profile\n        status_counts: Dict[Tuple[str, str], int] = {}\n        \n        for runner in self.runners.values():\n            key = (runner.status.value, runner.profile_name)\n            status_counts[key] = status_counts.get(key, 0) + 1\n            \n        # Update metrics\n        for (status, profile), count in status_counts.items():\n            RUNNER_COUNT.labels(status=status, profile=profile).set(count)\n            \n    async def _monitor_security_events(self) -> None:\n        \"\"\"Monitor for security events and anomalies.\"\"\"\n        while self._running:\n            try:\n                # Check for repeated failures\n                for operation, count in self._failed_operations.items():\n                    if count > 10:  # Threshold for suspicious activity\n                        self.logger.warning(\n                            \"High failure rate detected\",\n                            operation=operation,\n                            failures=count\n                        )\n                        SECURITY_EVENTS.labels(\n                            event_type=\"high_failure_rate\", \n                            severity=\"medium\"\n                        ).inc()\n                        \n                # Reset failure counters periodically\n                self._failed_operations.clear()\n                self._rate_limit_violations.clear()\n                \n                await asyncio.sleep(300)  # Check every 5 minutes\n                \n            except Exception as e:\n                self.logger.error(\"Error in security monitoring\", error=str(e))\n                await asyncio.sleep(60)\n                \n    async def _detect_security_anomalies(self) -> None:\n        \"\"\"Detect security anomalies in runner behavior.\"\"\"\n        try:\n            # Check for runners with suspicious behavior\n            for runner in self.runners.values():\n                # Detect long-running startup\n                if (runner.status == RunnerStatus.STARTING and \n                    datetime.utcnow() - runner.created_at > timedelta(minutes=10)):\n                    \n                    self.logger.warning(\n                        \"Runner taking too long to start\",\n                        runner_id=runner.id,\n                        duration=(datetime.utcnow() - runner.created_at).total_seconds()\n                    )\n                    SECURITY_EVENTS.labels(\n                        event_type=\"slow_startup\", \n                        severity=\"low\"\n                    ).inc()\n                    \n                # Detect frequent failures for same runner\n                if runner.status == RunnerStatus.FAILED:\n                    failure_key = f\"runner_failure_{runner.profile_name}\"\n                    self._failed_operations[failure_key] = self._failed_operations.get(failure_key, 0) + 1\n                    \n        except Exception as e:\n            self.logger.debug(\"Error detecting security anomalies\", error=str(e))\n            \n    async def _cleanup_failed_runners(self) -> None:\n        \"\"\"Background task to clean up consistently failing runners.\"\"\"\n        while self._running:\n            try:\n                await self._cleanup_idle_runners()\n                await asyncio.sleep(60)  # Run every minute\n            except Exception as e:\n                self.logger.error(\"Error in cleanup task\", error=str(e))\n                await asyncio.sleep(60)\n                \n    async def _update_metrics(self) -> None:\n        \"\"\"Background task to update metrics.\"\"\"\n        while self._running:\n            try:\n                self._update_runner_metrics()\n                await asyncio.sleep(30)  # Update every 30 seconds\n            except Exception as e:\n                self.logger.error(\"Error updating metrics\", error=str(e))\n                await asyncio.sleep(30)\n                \n    # Public API methods for external management\n    \n    async def get_runner_status(self) -> Dict[str, Any]:\n        \"\"\"Get current status of all runners.\"\"\"\n        return {\n            \"total_runners\": len(self.runners),\n            \"runners_by_status\": {\n                status.value: len([r for r in self.runners.values() if r.status == status])\n                for status in RunnerStatus\n            },\n            \"runners_by_profile\": {\n                profile: len([r for r in self.runners.values() if r.profile_name == profile])\n                for profile in self.config.profiles.keys()\n            },\n            \"last_scaling_decision\": self.last_scaling_decision.isoformat(),\n        }\n        \n    async def manually_scale(self, target_count: int, profile_name: Optional[str] = None) -> bool:\n        \"\"\"Manually scale to target runner count with security validation.\"\"\"\n        # Validate request\n        if not self.rate_limiter.allow_request(\"manual_scale\"):\n            self.logger.warning(\"Manual scaling rate limited\")\n            return False\n            \n        if target_count < 0 or target_count > self.config.scaling.max_replicas:\n            self.logger.error(\n                \"Invalid target count for manual scaling\",\n                target_count=target_count,\n                max_allowed=self.config.scaling.max_replicas\n            )\n            return False\n            \n        try:\n            current_count = len([r for r in self.runners.values() \n                               if r.status in [RunnerStatus.READY, RunnerStatus.RUNNING]])\n            \n            if target_count > current_count:\n                await self._scale_up(target_count - current_count)\n            elif target_count < current_count:\n                await self._scale_down(current_count - target_count)\n                \n            self.logger.info(\n                \"Manual scaling completed\",\n                target_count=target_count,\n                current_count=current_count\n            )\n            \n            return True\n            \n        except Exception as e:\n            self.logger.error(\"Manual scaling failed\", error=str(e))\n            return False\n            \n    async def emergency_shutdown(self) -> None:\n        \"\"\"Emergency shutdown with immediate runner termination.\"\"\"\n        self.logger.warning(\"Emergency shutdown initiated\")\n        SECURITY_EVENTS.labels(event_type=\"emergency_shutdown\", severity=\"high\").inc()\n        \n        # Immediately terminate all runners\n        await self._terminate_all_runners()\n        \n        # Signal shutdown\n        await self.stop()"}
+            )
+            
+            # Validate GitLab connectivity and authentication
+            await self.gitlab_client.validate_connection()
+            
+        except Exception as e:
+            self.logger.error("Failed to initialize GitLab client", error=str(e))
+            SECURITY_EVENTS.labels(event_type="gitlab_init_failure", severity="critical").inc()
+            raise ConnectionError(f"GitLab initialization failed: {e}")
+            
+    async def _validate_security_configuration(self) -> None:
+        """Validate security configuration and detect potential vulnerabilities."""
+        try:
+            # Validate runner profiles for security compliance
+            for profile_name, profile in self.config.profiles.items():
+                issues = self.security_validator.validate_runner_profile(profile)
+                if issues:
+                    self.logger.warning(
+                        "Security issues found in runner profile",
+                        profile=profile_name,
+                        issues=issues
+                    )
+                    SECURITY_EVENTS.labels(event_type="profile_security_warning", severity="medium").inc()
+                    
+            # Validate namespace security policies
+            await self.k8s_client.validate_namespace_security()
+            
+            # Check for suspicious configuration patterns
+            if self.config.enable_debug:
+                self.logger.warning(
+                    "Debug mode enabled - not recommended for production",
+                    environment="production"
+                )
+                SECURITY_EVENTS.labels(event_type="debug_mode_warning", severity="low").inc()
+                
+        except Exception as e:
+            self.logger.error("Security validation failed", error=str(e))
+            SECURITY_EVENTS.labels(event_type="security_validation_failure", severity="high").inc()
+            raise
+            
+    async def _control_loop(self) -> None:
+        """Main control loop with security monitoring and intelligent scaling."""
+        self.logger.info("Starting main control loop")
+        
+        while self._running:
+            try:
+                # Check rate limiting to prevent abuse
+                if not self.rate_limiter.allow_request("control_loop"):
+                    self.logger.warning("Control loop rate limited")
+                    SECURITY_EVENTS.labels(event_type="rate_limit_violation", severity="medium").inc()
+                    await asyncio.sleep(5)
+                    continue
+                    
+                # Update runner states from Kubernetes
+                await self._sync_runner_states()
+                
+                # Get current job queue information
+                queue_depth = await self._get_job_queue_depth()
+                JOB_QUEUE_DEPTH.set(queue_depth)
+                
+                # Make scaling decisions
+                await self._make_scaling_decision(queue_depth)
+                
+                # Clean up failed/idle runners
+                await self._cleanup_idle_runners()
+                
+                # Update metrics
+                self._update_runner_metrics()
+                
+                # Check for security anomalies
+                await self._detect_security_anomalies()
+                
+                await asyncio.sleep(10)  # Control loop interval
+                
+            except Exception as e:
+                self.logger.error("Error in control loop", error=str(e))
+                SECURITY_EVENTS.labels(event_type="control_loop_error", severity="high").inc()
+                await asyncio.sleep(30)  # Back off on errors
+                
+    async def _sync_runner_states(self) -> None:
+        """Synchronize runner states with Kubernetes cluster."""
+        try:
+            # Get all runner pods from Kubernetes
+            pods = await self.k8s_client.list_runner_pods()
+            
+            # Update existing runner states
+            for runner_id, runner in list(self.runners.items()):
+                pod = next((p for p in pods if p.metadata.name == runner.pod_name), None)
+                
+                if pod is None:
+                    # Pod no longer exists
+                    if runner.status not in [RunnerStatus.TERMINATED, RunnerStatus.FAILED]:
+                        self.logger.warning(
+                            "Runner pod disappeared unexpectedly",
+                            runner_id=runner_id,
+                            pod_name=runner.pod_name
+                        )
+                        runner.status = RunnerStatus.FAILED
+                        runner.error_message = "Pod disappeared unexpectedly"
+                        SECURITY_EVENTS.labels(event_type="pod_disappeared", severity="medium").inc()
+                else:
+                    # Update runner status based on pod state
+                    await self._update_runner_from_pod(runner, pod)
+                    
+            # Detect orphaned pods (pods without corresponding runner objects)
+            runner_pod_names = {r.pod_name for r in self.runners.values() if r.pod_name}
+            for pod in pods:
+                if pod.metadata.name not in runner_pod_names:
+                    self.logger.warning(
+                        "Found orphaned runner pod",
+                        pod_name=pod.metadata.name,
+                        pod_namespace=pod.metadata.namespace
+                    )
+                    SECURITY_EVENTS.labels(event_type="orphaned_pod", severity="medium").inc()
+                    # Optionally clean up orphaned pods
+                    await self.k8s_client.delete_pod(pod.metadata.name)
+                    
+        except Exception as e:
+            self.logger.error("Failed to sync runner states", error=str(e))
+            RUNNER_OPERATIONS.labels(operation="sync_states", result="failure", profile="all").inc()
+            
+    async def _update_runner_from_pod(self, runner: RunnerInstance, pod: Any) -> None:
+        """Update runner instance from Kubernetes pod state."""
+        pod_phase = pod.status.phase
+        
+        # Update basic information
+        runner.node_name = pod.spec.node_name
+        
+        # Map Kubernetes pod phase to runner status
+        if pod_phase == "Pending":
+            if runner.status == RunnerStatus.PENDING:
+                runner.status = RunnerStatus.STARTING
+        elif pod_phase == "Running":
+            if runner.status in [RunnerStatus.PENDING, RunnerStatus.STARTING]:
+                runner.status = RunnerStatus.READY
+                runner.started_at = datetime.utcnow()
+                RUNNER_LIFECYCLE_DURATION.labels(
+                    phase="startup", 
+                    profile=runner.profile_name
+                ).observe(
+                    (runner.started_at - runner.created_at).total_seconds()
+                )
+        elif pod_phase in ["Failed", "Succeeded"]:
+            if runner.status != RunnerStatus.TERMINATED:
+                runner.status = RunnerStatus.FAILED if pod_phase == "Failed" else RunnerStatus.TERMINATED
+                if pod.status.container_statuses:
+                    for container_status in pod.status.container_statuses:
+                        if container_status.state.terminated:
+                            runner.error_message = container_status.state.terminated.reason
+                            
+        # Check for security events in pod events
+        await self._check_pod_security_events(runner, pod)
+        
+    async def _check_pod_security_events(self, runner: RunnerInstance, pod: Any) -> None:
+        """Check for security-related events in pod lifecycle."""
+        try:
+            # Get pod events
+            events = await self.k8s_client.get_pod_events(pod.metadata.name)
+            
+            for event in events:
+                event_reason = event.reason.lower()
+                event_message = event.message.lower()
+                
+                # Detect suspicious events
+                suspicious_patterns = [
+                    "failed to pull image",
+                    "image pull backoff",
+                    "crashloopbackoff",
+                    "oomkilled",
+                    "security context",
+                    "privilege escalation",
+                ]
+                
+                if any(pattern in event_reason or pattern in event_message 
+                       for pattern in suspicious_patterns):
+                    self.logger.warning(
+                        "Suspicious pod event detected",
+                        runner_id=runner.id,
+                        pod_name=pod.metadata.name,
+                        event_reason=event.reason,
+                        event_message=event.message
+                    )
+                    SECURITY_EVENTS.labels(event_type="suspicious_pod_event", severity="medium").inc()
+                    
+        except Exception as e:
+            self.logger.debug("Failed to check pod events", error=str(e))
+            
+    async def _get_job_queue_depth(self) -> int:
+        """Get current GitLab job queue depth with caching and validation."""
+        try:
+            # Rate limit GitLab API calls
+            if not self.rate_limiter.allow_request("gitlab_api"):
+                self.logger.debug("GitLab API rate limited")
+                return 0
+                
+            # Get pending jobs from GitLab
+            queue_depth = await self.gitlab_client.get_pending_jobs_count()
+            
+            # Validate reasonable queue depth (detect potential API manipulation)
+            if queue_depth > 10000:  # Sanity check
+                self.logger.warning(
+                    "Extremely high queue depth detected",
+                    queue_depth=queue_depth
+                )
+                SECURITY_EVENTS.labels(event_type="suspicious_queue_depth", severity="medium").inc()
+                return min(queue_depth, 1000)  # Cap at reasonable value
+                
+            return queue_depth
+            
+        except Exception as e:
+            self.logger.error("Failed to get job queue depth", error=str(e))
+            return 0
+            
+    async def _make_scaling_decision(self, queue_depth: int) -> None:
+        """Make intelligent scaling decisions based on current state and policy."""
+        # Check if we're in cooldown period
+        if datetime.utcnow() - self.last_scaling_decision < self.scaling_cooldown:
+            return
+            
+        try:
+            current_runners = len([r for r in self.runners.values() 
+                                  if r.status in [RunnerStatus.READY, RunnerStatus.RUNNING]])
+            
+            scaling_config = self.config.scaling
+            
+            # Determine scaling action based on policy
+            if scaling_config.policy == ScalingPolicy.STATIC:
+                target_runners = scaling_config.min_replicas
+            else:
+                target_runners = self._calculate_target_runners(queue_depth, current_runners)
+                
+            # Apply scaling constraints
+            target_runners = max(scaling_config.min_replicas, 
+                               min(target_runners, scaling_config.max_replicas))
+            
+            # Execute scaling action
+            if target_runners > current_runners:
+                await self._scale_up(target_runners - current_runners)
+            elif target_runners < current_runners:
+                await self._scale_down(current_runners - target_runners)
+                
+        except Exception as e:
+            self.logger.error("Failed to make scaling decision", error=str(e))
+            SECURITY_EVENTS.labels(event_type="scaling_decision_error", severity="medium").inc()
+            
+    def _calculate_target_runners(self, queue_depth: int, current_runners: int) -> int:
+        """Calculate target number of runners based on intelligent algorithms."""
+        scaling_config = self.config.scaling
+        
+        if scaling_config.policy == ScalingPolicy.AGGRESSIVE:
+            # Scale quickly for burst workloads
+            if queue_depth > scaling_config.scale_up_threshold:
+                return current_runners + max(1, queue_depth // 2)
+            elif queue_depth == 0:
+                return max(scaling_config.min_replicas, current_runners - 2)
+        elif scaling_config.policy == ScalingPolicy.CONSERVATIVE:
+            # Scale slowly for steady workloads
+            if queue_depth > scaling_config.scale_up_threshold * 2:
+                return current_runners + 1
+            elif queue_depth == 0:
+                return max(scaling_config.min_replicas, current_runners - 1)
+        else:  # ADAPTIVE
+            # Balance between responsiveness and stability
+            utilization = queue_depth / max(current_runners, 1)
+            
+            if utilization > scaling_config.target_utilization * 1.5:
+                return current_runners + max(1, queue_depth // 3)
+            elif utilization < scaling_config.target_utilization * 0.3 and queue_depth == 0:
+                return max(scaling_config.min_replicas, current_runners - 1)
+                
+        return current_runners
+        
+    async def _scale_up(self, count: int) -> None:
+        """Scale up runner pool with security validation."""
+        self.logger.info("Scaling up runners", count=count)
+        
+        try:
+            for _ in range(count):
+                # Select profile (could be enhanced with intelligent selection)
+                profile = self.config.profiles[self.config.default_profile]
+                
+                # Create new runner instance
+                runner = RunnerInstance(profile_name=profile.name)
+                
+                # Deploy runner pod with security constraints
+                success = await self._deploy_runner_pod(runner, profile)
+                
+                if success:
+                    self.runners[runner.id] = runner
+                    RUNNER_OPERATIONS.labels(
+                        operation="scale_up", 
+                        result="success", 
+                        profile=profile.name
+                    ).inc()
+                    SCALING_DECISIONS.labels(
+                        direction="up", 
+                        reason="queue_depth", 
+                        profile=profile.name
+                    ).inc()
+                else:
+                    RUNNER_OPERATIONS.labels(
+                        operation="scale_up", 
+                        result="failure", 
+                        profile=profile.name
+                    ).inc()
+                    
+            self.last_scaling_decision = datetime.utcnow()
+            
+        except Exception as e:
+            self.logger.error("Failed to scale up", error=str(e))
+            SECURITY_EVENTS.labels(event_type="scale_up_error", severity="medium").inc()
+            
+    async def _scale_down(self, count: int) -> None:
+        """Scale down runner pool gracefully."""
+        self.logger.info("Scaling down runners", count=count)
+        
+        try:
+            # Select idle runners for termination
+            idle_runners = [
+                r for r in self.runners.values()
+                if r.status == RunnerStatus.READY and r.is_idle()
+            ]
+            
+            # Sort by idle time (longest idle first)
+            idle_runners.sort(
+                key=lambda r: r.last_activity or r.created_at
+            )
+            
+            # Terminate selected runners
+            terminated_count = 0
+            for runner in idle_runners[:count]:
+                success = await self._terminate_runner(runner)
+                if success:
+                    terminated_count += 1
+                    RUNNER_OPERATIONS.labels(
+                        operation="scale_down", 
+                        result="success", 
+                        profile=runner.profile_name
+                    ).inc()
+                    SCALING_DECISIONS.labels(
+                        direction="down", 
+                        reason="idle_timeout", 
+                        profile=runner.profile_name
+                    ).inc()
+                    
+            self.logger.info("Scaled down runners", terminated=terminated_count)
+            self.last_scaling_decision = datetime.utcnow()
+            
+        except Exception as e:
+            self.logger.error("Failed to scale down", error=str(e))
+            SECURITY_EVENTS.labels(event_type="scale_down_error", severity="medium").inc()
+            
+    async def _deploy_runner_pod(self, runner: RunnerInstance, profile: RunnerProfile) -> bool:
+        """Deploy runner pod with comprehensive security hardening."""
+        try:
+            # Generate unique pod name
+            pod_name = f"gitlab-runner-{runner.id}"
+            runner.pod_name = pod_name
+            
+            # Create pod specification with security context
+            pod_spec = await self.k8s_client.create_runner_pod_spec(
+                name=pod_name,
+                profile=profile,
+                runner_id=runner.id
+            )
+            
+            # Deploy pod
+            success = await self.k8s_client.create_pod(pod_spec)
+            
+            if success:
+                self.logger.info(
+                    "Runner pod deployed successfully",
+                    runner_id=runner.id,
+                    pod_name=pod_name,
+                    profile=profile.name
+                )
+                return True
+            else:
+                self.logger.error(
+                    "Failed to deploy runner pod",
+                    runner_id=runner.id,
+                    pod_name=pod_name
+                )
+                return False
+                
+        except Exception as e:
+            self.logger.error(
+                "Exception during pod deployment",
+                runner_id=runner.id,
+                error=str(e)
+            )
+            SECURITY_EVENTS.labels(event_type="pod_deployment_error", severity="medium").inc()
+            return False
+            
+    async def _terminate_runner(self, runner: RunnerInstance) -> bool:
+        """Gracefully terminate a runner with proper cleanup."""
+        try:
+            self.logger.info(
+                "Terminating runner",
+                runner_id=runner.id,
+                pod_name=runner.pod_name
+            )
+            
+            # Unregister from GitLab if registered
+            if runner.gitlab_runner_id and self.gitlab_client:
+                await self.gitlab_client.unregister_runner(runner.gitlab_runner_id)
+                
+            # Delete Kubernetes pod
+            if runner.pod_name and self.k8s_client:
+                success = await self.k8s_client.delete_pod(runner.pod_name)
+                if not success:
+                    self.logger.warning(
+                        "Failed to delete runner pod",
+                        runner_id=runner.id,
+                        pod_name=runner.pod_name
+                    )
+                    
+            # Update runner status
+            runner.status = RunnerStatus.TERMINATED
+            
+            # Record lifecycle duration
+            if runner.started_at:
+                duration = (datetime.utcnow() - runner.started_at).total_seconds()
+                RUNNER_LIFECYCLE_DURATION.labels(
+                    phase="total", 
+                    profile=runner.profile_name
+                ).observe(duration)
+                
+            return True
+            
+        except Exception as e:
+            self.logger.error(
+                "Failed to terminate runner",
+                runner_id=runner.id,
+                error=str(e)
+            )
+            return False
+            
+    async def _cleanup_idle_runners(self) -> None:
+        """Clean up idle and failed runners."""
+        try:
+            max_idle_time = timedelta(seconds=self.config.scaling.max_idle_time)
+            current_time = datetime.utcnow()
+            
+            runners_to_remove = []
+            
+            for runner_id, runner in self.runners.items():
+                should_remove = False
+                
+                # Remove terminated runners
+                if runner.status == RunnerStatus.TERMINATED:
+                    should_remove = True
+                    
+                # Remove failed runners after delay
+                elif runner.status == RunnerStatus.FAILED:
+                    if current_time - runner.created_at > timedelta(minutes=5):
+                        should_remove = True
+                        
+                # Remove long-idle runners
+                elif runner.is_idle(max_idle_time):
+                    await self._terminate_runner(runner)
+                    should_remove = True
+                    
+                if should_remove:
+                    runners_to_remove.append(runner_id)
+                    
+            # Clean up runner objects
+            for runner_id in runners_to_remove:
+                del self.runners[runner_id]
+                
+        except Exception as e:
+            self.logger.error("Failed to cleanup idle runners", error=str(e))
+            
+    async def _terminate_all_runners(self) -> None:
+        """Terminate all runners during shutdown."""
+        self.logger.info("Terminating all runners", count=len(self.runners))
+        
+        for runner in list(self.runners.values()):
+            await self._terminate_runner(runner)
+            
+        self.runners.clear()
+        
+    def _update_runner_metrics(self) -> None:
+        """Update Prometheus metrics for monitoring."""
+        # Clear existing metrics
+        RUNNER_COUNT._metrics.clear()
+        
+        # Count runners by status and profile
+        status_counts: Dict[Tuple[str, str], int] = {}
+        
+        for runner in self.runners.values():
+            key = (runner.status.value, runner.profile_name)
+            status_counts[key] = status_counts.get(key, 0) + 1
+            
+        # Update metrics
+        for (status, profile), count in status_counts.items():
+            RUNNER_COUNT.labels(status=status, profile=profile).set(count)
+            
+    async def _monitor_security_events(self) -> None:
+        """Monitor for security events and anomalies."""
+        while self._running:
+            try:
+                # Check for repeated failures
+                for operation, count in self._failed_operations.items():
+                    if count > 10:  # Threshold for suspicious activity
+                        self.logger.warning(
+                            "High failure rate detected",
+                            operation=operation,
+                            failures=count
+                        )
+                        SECURITY_EVENTS.labels(
+                            event_type="high_failure_rate", 
+                            severity="medium"
+                        ).inc()
+                        
+                # Reset failure counters periodically
+                self._failed_operations.clear()
+                self._rate_limit_violations.clear()
+                
+                await asyncio.sleep(300)  # Check every 5 minutes
+                
+            except Exception as e:
+                self.logger.error("Error in security monitoring", error=str(e))
+                await asyncio.sleep(60)
+                
+    async def _detect_security_anomalies(self) -> None:
+        """Detect security anomalies in runner behavior."""
+        try:
+            # Check for runners with suspicious behavior
+            for runner in self.runners.values():
+                # Detect long-running startup
+                if (runner.status == RunnerStatus.STARTING and 
+                    datetime.utcnow() - runner.created_at > timedelta(minutes=10)):
+                    
+                    self.logger.warning(
+                        "Runner taking too long to start",
+                        runner_id=runner.id,
+                        duration=(datetime.utcnow() - runner.created_at).total_seconds()
+                    )
+                    SECURITY_EVENTS.labels(
+                        event_type="slow_startup", 
+                        severity="low"
+                    ).inc()
+                    
+                # Detect frequent failures for same runner
+                if runner.status == RunnerStatus.FAILED:
+                    failure_key = f"runner_failure_{runner.profile_name}"
+                    self._failed_operations[failure_key] = self._failed_operations.get(failure_key, 0) + 1
+                    
+        except Exception as e:
+            self.logger.debug("Error detecting security anomalies", error=str(e))
+            
+    async def _cleanup_failed_runners(self) -> None:
+        """Background task to clean up consistently failing runners."""
+        while self._running:
+            try:
+                await self._cleanup_idle_runners()
+                await asyncio.sleep(60)  # Run every minute
+            except Exception as e:
+                self.logger.error("Error in cleanup task", error=str(e))
+                await asyncio.sleep(60)
+                
+    async def _update_metrics(self) -> None:
+        """Background task to update metrics."""
+        while self._running:
+            try:
+                self._update_runner_metrics()
+                await asyncio.sleep(30)  # Update every 30 seconds
+            except Exception as e:
+                self.logger.error("Error updating metrics", error=str(e))
+                await asyncio.sleep(30)
+                
+    # Public API methods for external management
+    
+    async def get_runner_status(self) -> Dict[str, Any]:
+        """Get current status of all runners."""
+        return {
+            "total_runners": len(self.runners),
+            "runners_by_status": {
+                status.value: len([r for r in self.runners.values() if r.status == status])
+                for status in RunnerStatus
+            },
+            "runners_by_profile": {
+                profile: len([r for r in self.runners.values() if r.profile_name == profile])
+                for profile in self.config.profiles.keys()
+            },
+            "last_scaling_decision": self.last_scaling_decision.isoformat(),
+        }
+        
+    async def manually_scale(self, target_count: int, profile_name: Optional[str] = None) -> bool:
+        """Manually scale to target runner count with security validation."""
+        # Validate request
+        if not self.rate_limiter.allow_request("manual_scale"):
+            self.logger.warning("Manual scaling rate limited")
+            return False
+            
+        if target_count < 0 or target_count > self.config.scaling.max_replicas:
+            self.logger.error(
+                "Invalid target count for manual scaling",
+                target_count=target_count,
+                max_allowed=self.config.scaling.max_replicas
+            )
+            return False
+            
+        try:
+            current_count = len([r for r in self.runners.values() 
+                               if r.status in [RunnerStatus.READY, RunnerStatus.RUNNING]])
+            
+            if target_count > current_count:
+                await self._scale_up(target_count - current_count)
+            elif target_count < current_count:
+                await self._scale_down(current_count - target_count)
+                
+            self.logger.info(
+                "Manual scaling completed",
+                target_count=target_count,
+                current_count=current_count
+            )
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error("Manual scaling failed", error=str(e))
+            return False
+            
+    async def emergency_shutdown(self) -> None:
+        """Emergency shutdown with immediate runner termination."""
+        self.logger.warning("Emergency shutdown initiated")
+        SECURITY_EVENTS.labels(event_type="emergency_shutdown", severity="high").inc()
+        
+        # Immediately terminate all runners
+        await self._terminate_all_runners()
+        
+        # Signal shutdown
+        await self.stop()

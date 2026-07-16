@@ -1,6 +1,6 @@
 # perihelion-infrastructure — Tero Index (Layer 1)
 
-> **Honesty:** Empirical/Declared — lite heading/line heuristic over markdown in perihelion-infrastructure via tero-mcp/scripts/generate_lite_index.py; source files are ground truth. Generated 2026-07-09.
+> **Honesty:** Empirical/Declared — lite heading/line heuristic over markdown in perihelion-infrastructure via tero-mcp/scripts/generate_lite_index.py; source files are ground truth. Generated 2026-07-16.
 > Use this index to find where to Read, not as authoritative ground truth.
 
 - **Items:** 311

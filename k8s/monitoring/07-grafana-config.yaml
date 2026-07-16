@@ -64,12 +64,18 @@ data:
     x_xss_protection = true
     
     [server]
-    domain = grafana.monitoring.svc.cluster.local
+    # East-west: Grafana listens HTTP on ClusterIP only (not NodePort/LB).
+    # North-south: terminate TLS at Ingress/Gateway (see 10-grafana-ingress.example.yaml).
+    # cookie_secure + HSTS above assume edge TLS; do not expose this Service publicly over plain HTTP.
+    domain = grafana.example.com
     http_addr = 0.0.0.0
     http_port = 3000
     protocol = http
-    root_url = http://grafana.monitoring.svc.cluster.local:3000/
+    # Public URL clients use (HTTPS via ingress). Override per env.
+    root_url = https://grafana.example.com/
     enable_gzip = true
+    # Enforce secure cookies only when traffic is TLS-terminated at the edge.
+    # (security.cookie_secure already true above)
     
     [unified_alerting]
     enabled = true

@@ -127,27 +127,32 @@ data:
         Script              security_filter.lua
         Call                security_classify
     
+    # Loki outputs: Fluent Bit expands ${LOKI_PASSWORD} from the process environment
+    # at startup (classic config). Inject via Secret (see loki-credentials below) on the
+    # Fluent Bit DaemonSet/Deployment — e.g. env.valueFrom.secretKeyRef. ConfigMap alone
+    # cannot substitute the password (issue #9).
     [OUTPUT]
-        Name                forward
+        Name                loki
         Match               kube.*
         Host                loki.logging.svc.cluster.local
         Port                3100
         HTTP_User           admin
         HTTP_Passwd         ${LOKI_PASSWORD}
-        Format              json
+        Labels              job=fluent-bit, env=production
+        auto_kubernetes_labels on
         tls                 on
         tls.verify          on
         Retry_Limit         5
         storage.total_limit_size  1G
     
     [OUTPUT]
-        Name                forward
+        Name                loki
         Match               systemd.*
         Host                loki.logging.svc.cluster.local
         Port                3100
         HTTP_User           admin
         HTTP_Passwd         ${LOKI_PASSWORD}
-        Format              json
+        Labels              job=fluent-bit, env=production
         tls                 on
         tls.verify          on
         Retry_Limit         5
@@ -226,3 +231,28 @@ data:
         
         return 1, timestamp, new_record
     end
+
+---
+# Basic-auth secret for Fluent Bit -> Loki (issue #9).
+# Replace password before apply; prefer ExternalSecrets/Vault in production.
+# Reference from Fluent Bit pod env:
+#   - name: LOKI_PASSWORD
+#     valueFrom:
+#       secretKeyRef:
+#         name: loki-credentials
+#         key: password
+apiVersion: v1
+kind: Secret
+metadata:
+  name: loki-credentials
+  namespace: logging
+  labels:
+    app.kubernetes.io/name: fluent-bit
+    app.kubernetes.io/component: logging
+    app.kubernetes.io/part-of: perihelion-auth-manager
+    app.kubernetes.io/managed-by: kubectl
+type: Opaque
+stringData:
+  username: admin
+  # PLACEHOLDER — set at deploy time; never commit real credentials.
+  password: "CHANGE_ME_LOKI_PASSWORD"
