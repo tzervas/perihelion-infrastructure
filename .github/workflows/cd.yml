@@ -37,7 +37,7 @@ jobs:
   # Pre-deployment validation
   pre-deployment:
     name: "🔍 Pre-deployment Validation"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     if: github.event.inputs.skip_tests != 'true'
     permissions:
       contents: read
@@ -117,7 +117,7 @@ jobs:
   # Staging deployment
   deploy-staging:
     name: "🎭 Deploy to Staging"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     needs: [pre-deployment]
     if: always() && (needs.pre-deployment.outputs.deployment-ready == 'true' || github.event.inputs.force_deploy == 'true')
     environment:
@@ -231,7 +231,7 @@ jobs:
   # Production deployment (requires manual approval)
   deploy-production:
     name: "🏭 Deploy to Production"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     needs: [pre-deployment, deploy-staging]
     if: |
       always() && 
@@ -394,7 +394,7 @@ jobs:
   # Post-deployment monitoring and alerts
   post-deployment:
     name: "📊 Post-deployment Monitoring"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     needs: [deploy-production]
     if: always() && needs.deploy-production.result == 'success'
     permissions:
@@ -459,7 +459,7 @@ jobs:
   # Rollback capability
   rollback:
     name: "🔄 Rollback Deployment"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     if: failure() && github.event_name == 'workflow_dispatch'
     environment:
       name: production

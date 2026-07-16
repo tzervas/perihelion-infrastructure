@@ -2,6 +2,16 @@ name: "🔄 Continuous Integration"
 
 # Manual only — no push/pull_request CI triggers
 on:
+  push:
+    branches:
+      - main
+      - dev
+      - develop
+  pull_request:
+    branches:
+      - main
+      - dev
+      - develop
   workflow_dispatch:
     inputs:
       skip_tests:
@@ -23,7 +33,7 @@ jobs:
   # Security and vulnerability scanning
   security-scan:
     name: "🔒 Security Scan"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     permissions:
       contents: read
       security-events: write
@@ -78,7 +88,7 @@ jobs:
   # Code quality and linting
   code-quality:
     name: "✨ Code Quality"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     permissions:
       contents: read
       pull-requests: write
@@ -131,7 +141,7 @@ jobs:
   # Comprehensive testing suite
   test:
     name: "🧪 Test Suite"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     if: github.event.inputs.skip_tests != 'true'
     permissions:
       contents: read
@@ -196,7 +206,7 @@ jobs:
   # Docker image building and scanning
   docker-build:
     name: "🐳 Docker Build & Scan"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     permissions:
       contents: read
       security-events: write
@@ -261,7 +271,7 @@ jobs:
   # Kubernetes manifest validation
   k8s-validation:
     name: "☸️ Kubernetes Validation"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     permissions:
       contents: read
     
@@ -313,7 +323,7 @@ jobs:
   # Infrastructure as Code validation
   iac-validation:
     name: "🏗️ Infrastructure Validation"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     permissions:
       contents: read
     
@@ -351,7 +361,7 @@ jobs:
   # Sourcery AI code review (simulated)
   sourcery-ai:
     name: "🤖 Sourcery AI Review"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     if: github.event_name == 'pull_request'
     permissions:
       contents: read
@@ -400,7 +410,7 @@ jobs:
   # Final CI status check
   ci-status:
     name: "✅ CI Status Check"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     needs: [security-scan, code-quality, test, docker-build, k8s-validation, iac-validation]
     if: always()
     permissions:

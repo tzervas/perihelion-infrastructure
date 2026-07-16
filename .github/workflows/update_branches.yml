@@ -31,7 +31,7 @@ concurrency:
 jobs:
   discover-branches:
     name: "🔍 Discover Branches"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     outputs:
       branches: ${{ steps.branches.outputs.list }}
       total: ${{ steps.branches.outputs.total }}
@@ -93,7 +93,7 @@ jobs:
 
   update-branches:
     name: "🔄 Update ${{ matrix.branch }}"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     needs: [discover-branches]
     if: needs.discover-branches.outputs.total > 0
     strategy:
@@ -305,7 +305,7 @@ jobs:
   # Summary report
   update-summary:
     name: "📊 Update Summary"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     needs: [discover-branches, update-branches]
     if: always() && needs.discover-branches.outputs.total > 0
     

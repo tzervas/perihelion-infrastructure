@@ -2,6 +2,16 @@ name: "🔒 Security Scanning"
 
 # Manual only — no push/pull_request CI triggers
 on:
+  push:
+    branches:
+      - main
+      - dev
+      - develop
+  pull_request:
+    branches:
+      - main
+      - dev
+      - develop
   workflow_dispatch:
     inputs:
       scan_type:
@@ -43,7 +53,7 @@ jobs:
   # Static Application Security Testing (SAST)
   sast-scan:
     name: "🔍 SAST Scan"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     if: github.event.inputs.scan_type == 'all' || github.event.inputs.scan_type == 'sast' || github.event.inputs.scan_type == ''
     permissions:
       contents: read
@@ -183,7 +193,7 @@ jobs:
   # Dependency scanning
   dependency-scan:
     name: "📦 Dependency Scan"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     if: github.event.inputs.scan_type == 'all' || github.event.inputs.scan_type == 'dependencies' || github.event.inputs.scan_type == ''
     permissions:
       contents: read
@@ -253,7 +263,7 @@ jobs:
   # Container security scanning
   container-scan:
     name: "🐳 Container Security Scan"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     if: github.event.inputs.scan_type == 'all' || github.event.inputs.scan_type == 'containers' || github.event.inputs.scan_type == ''
     permissions:
       contents: read
@@ -333,7 +343,7 @@ jobs:
   # Infrastructure security scanning
   infrastructure-scan:
     name: "🏗️ Infrastructure Security Scan"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     if: github.event.inputs.scan_type == 'all' || github.event.inputs.scan_type == 'infrastructure' || github.event.inputs.scan_type == ''
     permissions:
       contents: read
@@ -422,7 +432,7 @@ jobs:
   # Secret scanning
   secret-scan:
     name: "🔑 Secret Scanning"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     permissions:
       contents: read
       security-events: write
@@ -465,7 +475,7 @@ jobs:
   # Security compliance check
   compliance-check:
     name: "📋 Security Compliance Check"
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, podman]
     needs: [sast-scan, dependency-scan, container-scan, infrastructure-scan]
     if: always()
     permissions:
