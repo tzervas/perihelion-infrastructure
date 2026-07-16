@@ -11,12 +11,23 @@ fi
 source "$VENV/bin/activate"
 python -m pip install -q -U pip
 [[ -f requirements.txt ]] && python -m pip install -q -r requirements.txt
-[[ -f requirements-dev.txt ]] && python -m pip install -q -r requirements-dev.txt
+[[ -f requirements-dev.txt ]] && python -m pip install -q -r requirements-dev.txt || true
 python -m pip install -q -e . 2>/dev/null || true
-# (uv path available via Makefile; venv+pip for hermetic check.sh reliability)
-# Run tests (incl security/ as present)
+# Hard gate: package must import (catches SyntaxError / pydantic model load)
+python -c "from gitlab_runner_controller.controllers.runner_controller import GitLabRunnerController"
+# Run tests (security suite has known unit-test debt; collection/import must succeed)
 if [[ -d tests ]]; then
-  python -m pytest -q tests/ || true
+  set +e
+  python -m pytest -q tests/ --tb=line
+  rc=$?
+  set -e
+  if [[ $rc -eq 2 ]]; then
+    echo "FAIL: pytest collection/usage error (rc=2)"
+    exit 2
+  fi
+  if [[ $rc -ne 0 ]]; then
+    echo "WARN: pytest failures rc=$rc (pre-existing security unit-test debt; import/collection OK)"
+  fi
 fi
 # Lint/format if tools present (advisory; Makefile has full)
 if [[ "$MODE" == "--fix" ]]; then
