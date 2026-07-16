@@ -1,11 +1,7 @@
 name: "🌿 Update Branches"
 
+# Manual only — no push/pull_request CI triggers
 on:
-  push:
-    branches: ["main"]
-  schedule:
-    # Run daily at 2 AM UTC
-    - cron: "0 2 * * *"
   workflow_dispatch:
     inputs:
       branches:

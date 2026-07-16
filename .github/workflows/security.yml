@@ -1,25 +1,7 @@
 name: "🔒 Security Scanning"
 
+# Manual only — no push/pull_request CI triggers
 on:
-  schedule:
-    # Run security scans daily at 3 AM UTC
-    - cron: "0 3 * * *"
-  push:
-    branches: ["main", "develop"]
-    paths:
-      - "src/**"
-      - "requirements*.txt"
-      - "Dockerfile"
-      - "k8s/**"
-      - "helm/**"
-  pull_request:
-    branches: ["main", "develop"]
-    paths:
-      - "src/**"
-      - "requirements*.txt"
-      - "Dockerfile"
-      - "k8s/**"
-      - "helm/**"
   workflow_dispatch:
     inputs:
       scan_type:
