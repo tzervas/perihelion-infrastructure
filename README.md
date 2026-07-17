@@ -1,5 +1,10 @@
 # 🏗️ Perihelion Infrastructure
 
+<!-- FLEET-BADGES:BEGIN -->
+[![CI](https://github.com/tzervas/perihelion-infrastructure/actions/workflows/fleet-ci.yml/badge.svg?branch=main)](https://github.com/tzervas/perihelion-infrastructure/actions/workflows/fleet-ci.yml?query=branch%3Amain)
+[![Security](https://github.com/tzervas/perihelion-infrastructure/actions/workflows/fleet-security.yml/badge.svg?branch=main)](https://github.com/tzervas/perihelion-infrastructure/actions/workflows/fleet-security.yml?query=branch%3Amain)
+<!-- FLEET-BADGES:END -->
+
 **Enterprise-Grade Kubernetes Infrastructure with Security-First GitLab CI/CD Platform**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
